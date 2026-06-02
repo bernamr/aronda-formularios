@@ -255,9 +255,26 @@ document.getElementById("modal-fecha").value = new Date().toISOString().slice(0,
 
 async function cargarDatos() {
   try {
-    const res  = await fetch(APPS_SCRIPT_URL);
-    const data = await res.json();
-    renderProductos(data.productos || []);
+    // Cargar precios + catálogo de productos (para grupos y estado activo)
+    const [r1, r2] = await Promise.all([
+      fetch(APPS_SCRIPT_URL),
+      fetch(PRODUCTOS_SCRIPT_URL)
+    ]);
+    const precios   = await r1.json();
+    const catalogo  = await r2.json();
+    todosProductos  = catalogo.productos || [];
+
+    // Cruzar precio con grupo y estado activo
+    const prodMap = {};
+    todosProductos.forEach(p => prodMap[p.producto_id] = p);
+
+    const items = (precios.productos || []).map(i => ({
+      ...i,
+      grupo: prodMap[i.producto_id]?.grupo || "Otros",
+      activo: prodMap[i.producto_id]?.activo ?? 1
+    })).filter(i => String(i.activo) === "1");
+
+    renderProductos(items);
   } catch(e) {
     document.getElementById("list-productos").innerHTML = '<div class="loading">❌ Error al cargar</div>';
   }
@@ -267,38 +284,42 @@ cargarDatos();
 function fmt(n) { return "$" + Number(n).toLocaleString("es-AR"); }
 
 // Grupos para organizar visualmente
-const GRUPOS = {
-  "Combos":     ["CB-MD","CB-GR","CB-CK","CB-BDN"],
-  "Cafés":      ["CF-GR","CF-MD","CF-CH","CF-FR","CF-TE"],
-  "Pastelería": ["PS-ALF","PS-CK","PS-CKP","PS-BRW"],
-  "Panadería":  ["PND-CRS","PND-CRSJYQ","PND-BDN","PND-MDL","PND-MFLD","PND-TRT"],
-  "Bebidas":    ["BF-JG","BF-LT","BF-BT","BF-KMB","BF-LIC"],
-};
-
 function renderProductos(items) {
-  const byId = {};
-  items.forEach(i => byId[i.producto_id] = i);
+  // Solo mostrar productos activos
+  const activos = items.filter(i => !todosProductos.length ||
+    todosProductos.find(p => p.producto_id === i.producto_id && String(p.activo) === "1") ||
+    !todosProductos.find(p => p.producto_id === i.producto_id));
+
+  // Agrupar dinámicamente
+  const grupos = {};
+  activos.forEach(i => {
+    const g = i.grupo || "Otros";
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push(i);
+  });
 
   let html = "";
-  for (const [grupo, ids] of Object.entries(GRUPOS)) {
-    const grupoItems = ids.map(id => byId[id]).filter(Boolean);
-    if (!grupoItems.length) continue;
+  for (const [grupo, gItems] of Object.entries(grupos)) {
     html += `<div class="group-title">${grupo}</div>`;
-    grupoItems.forEach(i => {
+    gItems.forEach(i => {
       html += `
         <div class="item">
           <div class="item-info">
             <div class="item-name">${i.nombre}</div>
-            <div class="item-meta">desde ${i.vigente_desde}</div>
+            <div class="item-meta">desde ${i.vigente_desde || '—'}</div>
           </div>
           <span class="item-precio">${fmt(i.precio_actual)}</span>
-          <button class="btn-update" onclick='abrirModal("${i.producto_id}","${i.nombre}",${i.precio_actual})'>
+          <button class="btn-update" data-pid="${i.producto_id}" data-nombre="${i.nombre}" data-precio="${i.precio_actual}" onclick="abrirModalBtn(this)">
             Actualizar
           </button>
         </div>`;
     });
   }
   document.getElementById("list-productos").innerHTML = html || '<div class="loading">Sin datos</div>';
+}
+
+function abrirModalBtn(btn) {
+  abrirModal(btn.dataset.pid, btn.dataset.nombre, parseFloat(btn.dataset.precio));
 }
 
 function abrirModal(id, nombre, precioActual) {
@@ -510,11 +531,17 @@ function renderGestion() {
           <div style="font-weight:700;font-size:0.9rem">${p.nombre}</div>
           <div style="font-size:0.7rem;color:#aaa">${p.producto_id} · ${p.tipo_costo||''}</div>
         </div>
-        <button data-pid="${p.producto_id}" data-activo="${activo}"
-          onclick="toggleProducto(this)"
-          style="padding:7px 14px;border:2px solid ${activo?'#c0392b':'#1a3a2c'};border-radius:8px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;color:${activo?'#c0392b':'#1a3a2c'}">
-          ${activo?"Desactivar":"Activar"}
-        </button>
+        <div style="display:flex;gap:6px">
+          <button data-pid="${p.producto_id}" data-activo="${activo}"
+            onclick="toggleProducto(this)"
+            style="padding:7px 10px;border:2px solid ${activo?'#c0392b':'#1a3a2c'};border-radius:8px;background:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;color:${activo?'#c0392b':'#1a3a2c'}">
+            ${activo?"Desactivar":"Activar"}
+          </button>
+          <button data-pid="${p.producto_id}" onclick="eliminar(this)"
+            style="padding:7px 10px;border:2px solid #999;border-radius:8px;background:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;color:#666">
+            🗑
+          </button>
+        </div>
       </div>`;
     });
   }
@@ -528,6 +555,7 @@ async function agregarProducto() {
   const costo  = parseFloat(document.getElementById("np-costo").value) || 0;
   if (!nombre) { showToast("Ingresá el nombre", true); return; }
   if (!precio) { showToast("Ingresá el precio", true); return; }
+  console.log("tipoCosto:", tipoCosto, "recetaActual:", JSON.stringify(recetaActual));
   if (tipoCosto === "receta" && recetaActual.length === 0) {
     showToast("Agregá al menos un ingrediente", true); return;
   }
@@ -574,6 +602,17 @@ async function desactivar(id) {
     body: JSON.stringify({action:"deactivate", producto_id:id})
   });
   showToast("Producto desactivado");
+  setTimeout(() => cargarGestion(), 1500);
+}
+
+async function eliminar(btn) {
+  const id = btn.getAttribute("data-pid");
+  if (!confirm(`¿Eliminar ${id} permanentemente?`)) return;
+  await fetch(PRODUCTOS_SCRIPT_URL, {
+    method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"delete", producto_id:id})
+  });
+  showToast("Producto eliminado");
   setTimeout(() => cargarGestion(), 1500);
 }
 
