@@ -247,6 +247,7 @@ header span { font-size: 0.75rem; opacity: 0.6; }
 <script>
 const APPS_SCRIPT_URL    = "https://script.google.com/macros/s/AKfycbxYsISwmVrgESI-A2acS4Hy64mMFGC_6PoR4MpgkAupK1-MJrngEtWcoyUDReMPog6UUg/exec";
 const PRODUCTOS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqdaCwdm0a9kB0WUcrVO2_GeHiZYZBjgWs-NYfUBJtODHMiOoCDsKF_Z4iMKs1ODl6/exec";
+const RECETAS_SCRIPT_URL   = "https://script.google.com/macros/s/AKfycbyQehMELr95jXrQtwX6EfLeD3j2NcVkb1bs7t6U90VR0dLeXWmHuKVQN23MxzT6C84/exec";
 const INSUMOS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQVMIBgRm2JjLmGlpgz-p1O2E02-wl7BLJQGM0EUXAOvznQ0HXFkct0tNL5zeL-SCjDW6LIdbB-vIQz/pub?gid=844322540&single=true&output=csv";
 
 let pendiente = null;
@@ -564,8 +565,8 @@ async function agregarProducto() {
   const hoy = new Date().toISOString().slice(0,10);
 
   // 1. Guardar producto + receta/insumos en Aronda_Productos
-  await fetch(PRODUCTOS_SCRIPT_URL, {
-    method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+  const resp = await fetch(PRODUCTOS_SCRIPT_URL, {
+    method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
       action:"add", producto_id, nombre, grupo,
       tipo_costo: tipoCosto,
@@ -573,8 +574,20 @@ async function agregarProducto() {
       receta: tipoCosto === "receta" ? recetaActual : []
     })
   });
+  const respData = await resp.json().catch(() => ({}));
+  if (!respData.ok) { showToast("Error: " + (respData.error || "desconocido"), true); return; }
 
-  // 2. Registrar precio de venta en Aronda_Precios
+  // 2. Si tiene receta → enviar directo a Aronda_Recetas
+  if (tipoCosto === "receta" && recetaActual.length > 0) {
+    const respRec = await fetch(RECETAS_SCRIPT_URL, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ producto_id, receta: recetaActual })
+    });
+    const rRec = await respRec.json().catch(() => ({}));
+    if (!rRec.ok) { showToast("Error guardando receta: " + (rRec.error||""), true); return; }
+  }
+
+  // 3. Registrar precio de venta en Aronda_Precios
   await fetch(APPS_SCRIPT_URL, {
     method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({tipo:"producto", id:producto_id, nuevo_precio:precio, fecha:hoy})
