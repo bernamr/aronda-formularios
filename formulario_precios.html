@@ -510,7 +510,8 @@ function renderGestion() {
           <div style="font-weight:700;font-size:0.9rem">${p.nombre}</div>
           <div style="font-size:0.7rem;color:#aaa">${p.producto_id} · ${p.tipo_costo||''}</div>
         </div>
-        <button onclick="${activo?`desactivar('${p.producto_id}')`:`reactivar('${p.producto_id}')`}"
+        <button data-pid="${p.producto_id}" data-activo="${activo}"
+          onclick="toggleProducto(this)"
           style="padding:7px 14px;border:2px solid ${activo?'#c0392b':'#1a3a2c'};border-radius:8px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;color:${activo?'#c0392b':'#1a3a2c'}">
           ${activo?"Desactivar":"Activar"}
         </button>
@@ -559,6 +560,12 @@ async function agregarProducto() {
   recetaActual = [];
   renderReceta();
   setTimeout(() => cargarGestion(), 1500);
+}
+
+function toggleProducto(btn) {
+  const pid    = btn.getAttribute("data-pid");
+  const activo = btn.getAttribute("data-activo") === "true";
+  if (activo) desactivar(pid); else reactivar(pid);
 }
 
 async function desactivar(id) {
