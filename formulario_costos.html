@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Aronda — Costos</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; }
+
+header {
+  background: #2c1a0e; color: #f5e6d3;
+  padding: 16px 20px; position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-size: 1.1rem; letter-spacing: 1px; }
+header span { font-size: 0.75rem; opacity: 0.6; }
+
+.tabs {
+  display: flex; background: #fff;
+  border-bottom: 2px solid #e0d6cc;
+  position: sticky; top: 53px; z-index: 9;
+}
+.tab {
+  flex: 1; padding: 14px; text-align: center;
+  font-weight: 700; font-size: 0.85rem; cursor: pointer;
+  color: #999; border-bottom: 3px solid transparent;
+}
+.tab.active { color: #2c1a0e; border-bottom-color: #2c1a0e; }
+
+.section { display: none; padding-bottom: 40px; }
+.section.active { display: block; }
+
+.group-title {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #999; padding: 14px 20px 4px;
+}
+
+.item {
+  background: #fff; margin: 8px 16px; border-radius: 12px;
+  padding: 14px 16px; display: flex; align-items: center;
+  gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.item-info { flex: 1; }
+.item-name { font-weight: 700; font-size: 0.95rem; color: #222; }
+.item-meta { font-size: 0.72rem; color: #aaa; margin-top: 3px; }
+.item-precio { font-size: 1.1rem; font-weight: 800; color: #2c1a0e; margin-right: 10px; white-space: nowrap; }
+
+.btn-update {
+  background: #2c1a0e; color: #fff; border: none;
+  border-radius: 8px; padding: 8px 14px;
+  font-size: 0.82rem; font-weight: 700; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+
+.loading { text-align: center; padding: 40px; color: #aaa; font-size: 0.9rem; }
+
+/* Modal */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: 100;
+  align-items: flex-end; justify-content: center;
+}
+.overlay.show { display: flex; }
+.modal {
+  background: #fff; border-radius: 20px 20px 0 0;
+  padding: 24px 24px 36px; width: 100%; max-width: 500px;
+}
+.modal-handle {
+  width: 40px; height: 4px; background: #ddd;
+  border-radius: 2px; margin: 0 auto 20px;
+}
+.modal h3 { font-size: 1.1rem; color: #2c1a0e; }
+.modal-current { font-size: 0.85rem; color: #888; margin: 4px 0 20px; }
+.modal label { font-size: 0.75rem; font-weight: 700; color: #666; text-transform: uppercase; }
+.modal input {
+  display: block; width: 100%; margin: 6px 0 16px;
+  border: 1.5px solid #ddd; border-radius: 10px;
+  padding: 12px; font-size: 1.1rem; color: #333;
+}
+.modal input:focus { outline: none; border-color: #2c1a0e; }
+.modal-btns { display: flex; gap: 10px; margin-top: 4px; }
+.btn-cancel {
+  flex: 1; padding: 14px; border: 2px solid #ddd;
+  border-radius: 12px; background: #fff;
+  font-weight: 700; cursor: pointer; color: #666; font-size: 0.95rem;
+}
+.btn-confirm {
+  flex: 2; padding: 14px; border: none;
+  border-radius: 12px; background: #2c1a0e; color: #fff;
+  font-weight: 700; cursor: pointer; font-size: 0.95rem;
+}
+.btn-confirm:disabled { opacity: 0.5; }
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #2c1a0e; color: #fff;
+  padding: 12px 24px; border-radius: 30px;
+  font-weight: 700; transition: transform .3s; z-index: 200; white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #c0392b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>☕ ARONDA — Costos</h1>
+  <span id="fecha-hoy"></span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('insumos')">🧾 Insumos</div>
+  <div class="tab"        onclick="showTab('directos')">📦 Costos directos</div>
+  <div class="tab"        onclick="showTab('productos')">🏷️ Precios venta</div>
+</div>
+
+<div class="section active" id="tab-insumos">
+  <div class="group-title">Precio de insumos</div>
+  <div id="list-insumos"><div class="loading">Cargando...</div></div>
+</div>
+
+<div class="section" id="tab-directos">
+  <div class="group-title">Costos directos por producto</div>
+  <div id="list-directos"><div class="loading">Cargando...</div></div>
+</div>
+
+<div class="section" id="tab-productos">
+  <div class="group-title">Precios de venta</div>
+  <div id="list-productos"><div class="loading">Cargando...</div></div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="modal-title"></h3>
+    <div class="modal-current" id="modal-current"></div>
+    <label>Nuevo precio ($)</label>
+    <input type="number" id="modal-precio" placeholder="0" min="0" inputmode="numeric">
+    <label>Vigente desde</label>
+    <input type="date" id="modal-fecha">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-confirm" id="btn-confirm" onclick="confirmar()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Configuración ──────────────────────────────────────────────────────────────
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzfwoov2sT9k-a-z3zpbhAuxLNsOZ0HtiSU2Auq7pb3YbpoQu3SV8wOtWNRzZgXfVl5xQ/exec";
+
+// ── Estado ─────────────────────────────────────────────────────────────────────
+let pendiente = null;
+document.getElementById("fecha-hoy").textContent = new Date().toLocaleDateString("es-AR");
+document.getElementById("modal-fecha").value = new Date().toISOString().slice(0,10);
+
+// ── Cargar datos ───────────────────────────────────────────────────────────────
+async function cargarDatos() {
+  try {
+    const res = await fetch(APPS_SCRIPT_URL);
+    const data = await res.json();
+    renderInsumos(data.insumos || []);
+    renderDirectos(data.directos || []);
+    renderProductos(data.productos || []);
+  } catch(e) {
+    document.getElementById("list-insumos").innerHTML  = '<div class="loading">❌ Error al cargar</div>';
+    document.getElementById("list-directos").innerHTML = '<div class="loading">❌ Error al cargar</div>';
+  }
+}
+cargarDatos();
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+function fmt(n) { return "$" + Number(n).toLocaleString("es-AR"); }
+
+function renderInsumos(items) {
+  document.getElementById("list-insumos").innerHTML = items.map(i => `
+    <div class="item">
+      <div class="item-info">
+        <div class="item-name">${i.nombre}</div>
+        <div class="item-meta">por ${i.unidad} · desde ${i.vigente_desde}</div>
+      </div>
+      <span class="item-precio">${fmt(i.precio_actual)}</span>
+      <button class="btn-update" onclick='abrirModal("insumo","${i.insumo_id}","${i.nombre}",${i.precio_actual})'>
+        Actualizar
+      </button>
+    </div>`).join("") || '<div class="loading">Sin datos</div>';
+}
+
+function renderDirectos(items) {
+  document.getElementById("list-directos").innerHTML = items.map(i => `
+    <div class="item">
+      <div class="item-info">
+        <div class="item-name">${i.nombre}</div>
+        <div class="item-meta">desde ${i.vigente_desde}</div>
+      </div>
+      <span class="item-precio">${fmt(i.costo_actual)}</span>
+      <button class="btn-update" onclick='abrirModal("directo","${i.producto_id}","${i.nombre}",${i.costo_actual})'>
+        Actualizar
+      </button>
+    </div>`).join("") || '<div class="loading">Sin datos</div>';
+}
+
+function renderProductos(items) {
+  document.getElementById("list-productos").innerHTML = items.map(i => `
+    <div class="item">
+      <div class="item-info">
+        <div class="item-name">${i.nombre}</div>
+        <div class="item-meta">desde ${i.vigente_desde}</div>
+      </div>
+      <span class="item-precio">${fmt(i.precio_actual)}</span>
+      <button class="btn-update" onclick='abrirModal("producto","${i.producto_id}","${i.nombre}",${i.precio_actual})'>
+        Actualizar
+      </button>
+    </div>`).join("") || '<div class="loading">Sin datos</div>';
+}
+
+// ── Tab ────────────────────────────────────────────────────────────────────────
+function showTab(t) {
+  const tabs = ["insumos","directos","productos"];
+  document.querySelectorAll(".tab").forEach((el,i) =>
+    el.className = "tab" + (tabs[i]===t ? " active" : ""));
+  tabs.forEach(tab =>
+    document.getElementById("tab-"+tab).className = "section" + (tab===t ? " active" : ""));
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────────
+function abrirModal(tipo, id, nombre, precioActual) {
+  pendiente = { tipo, id };
+  document.getElementById("modal-title").textContent   = nombre;
+  document.getElementById("modal-current").textContent = "Precio actual: " + fmt(precioActual);
+  document.getElementById("modal-precio").value = "";
+  document.getElementById("modal-fecha").value  = new Date().toISOString().slice(0,10);
+  document.getElementById("overlay").className  = "overlay show";
+  setTimeout(() => document.getElementById("modal-precio").focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById("overlay").className = "overlay";
+  pendiente = null;
+}
+
+async function confirmar() {
+  const precio = document.getElementById("modal-precio").value;
+  const fecha  = document.getElementById("modal-fecha").value;
+  if (!precio) { showToast("Ingresá el nuevo precio", true); return; }
+
+  const btn = document.getElementById("btn-confirm");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...pendiente, nuevo_precio: parseFloat(precio), fecha })
+    });
+    // Con no-cors no podemos leer la respuesta, asumimos éxito
+    showToast("✅ Precio actualizado");
+    closeModal();
+    setTimeout(() => cargarDatos(), 1500);
+  } catch(e) {
+    showToast("❌ Error de conexión", true);
+  } finally {
+    btn.disabled = false; btn.textContent = "Guardar";
+  }
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast" + (isError?" error":"") + " show";
+  setTimeout(() => t.className = "toast" + (isError?" error":""), 3000);
+}
+
+// Cerrar modal tocando afuera
+document.getElementById("overlay").addEventListener("click", e => {
+  if (e.target === document.getElementById("overlay")) closeModal();
+});
+</script>
+</body>
+</html>

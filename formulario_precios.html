@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Aronda — Precios</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; }
+
+header {
+  background: #1a3a2c; color: #d3f5e6;
+  padding: 16px 20px; position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-size: 1.1rem; letter-spacing: 1px; }
+header span { font-size: 0.75rem; opacity: 0.6; }
+
+.group-title {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #999; padding: 14px 20px 4px;
+}
+
+.item {
+  background: #fff; margin: 8px 16px; border-radius: 12px;
+  padding: 14px 16px; display: flex; align-items: center;
+  gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.item-info { flex: 1; }
+.item-name { font-weight: 700; font-size: 0.95rem; color: #222; }
+.item-meta { font-size: 0.72rem; color: #aaa; margin-top: 3px; }
+.item-precio { font-size: 1.1rem; font-weight: 800; color: #1a3a2c; margin-right: 10px; white-space: nowrap; }
+
+.btn-update {
+  background: #1a3a2c; color: #fff; border: none;
+  border-radius: 8px; padding: 8px 14px;
+  font-size: 0.82rem; font-weight: 700; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+
+.loading { text-align: center; padding: 40px; color: #aaa; font-size: 0.9rem; }
+
+/* Modal */
+.overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55); z-index: 100;
+  align-items: flex-end; justify-content: center;
+}
+.overlay.show { display: flex; }
+.modal {
+  background: #fff; border-radius: 20px 20px 0 0;
+  padding: 24px 24px 36px; width: 100%; max-width: 500px;
+}
+.modal-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 20px; }
+.modal h3 { font-size: 1.1rem; color: #1a3a2c; }
+.modal-current { font-size: 0.85rem; color: #888; margin: 4px 0 20px; }
+.modal label { font-size: 0.75rem; font-weight: 700; color: #666; text-transform: uppercase; }
+.modal input {
+  display: block; width: 100%; margin: 6px 0 16px;
+  border: 1.5px solid #ddd; border-radius: 10px;
+  padding: 12px; font-size: 1.1rem; color: #333;
+}
+.modal input:focus { outline: none; border-color: #1a3a2c; }
+.modal-btns { display: flex; gap: 10px; }
+.btn-cancel {
+  flex: 1; padding: 14px; border: 2px solid #ddd;
+  border-radius: 12px; background: #fff;
+  font-weight: 700; cursor: pointer; color: #666;
+}
+.btn-confirm {
+  flex: 2; padding: 14px; border: none;
+  border-radius: 12px; background: #1a3a2c; color: #fff;
+  font-weight: 700; cursor: pointer; font-size: 0.95rem;
+}
+.btn-confirm:disabled { opacity: 0.5; }
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1a3a2c; color: #fff;
+  padding: 12px 24px; border-radius: 30px;
+  font-weight: 700; transition: transform .3s; z-index: 200;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #c0392b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏷️ ARONDA — Precios</h1>
+  <span id="fecha-hoy"></span>
+</header>
+
+<div style="display:flex;background:#fff;border-bottom:2px solid #e0d6cc;position:sticky;top:53px;z-index:9">
+  <div id="tab-precios-btn" onclick="showTab('precios')"
+    style="flex:1;padding:13px;text-align:center;font-weight:700;font-size:0.85rem;cursor:pointer;color:#1a3a2c;border-bottom:3px solid #1a3a2c">
+    🏷️ Precios
+  </div>
+  <div id="tab-productos-btn" onclick="showTab('productos')"
+    style="flex:1;padding:13px;text-align:center;font-weight:700;font-size:0.85rem;cursor:pointer;color:#999;border-bottom:3px solid transparent">
+    📦 Productos
+  </div>
+</div>
+
+<!-- TAB PRECIOS -->
+<div id="tab-precios">
+  <div id="list-productos"><div class="loading">Cargando...</div></div>
+</div>
+
+<!-- TAB PRODUCTOS -->
+<div id="tab-productos" style="display:none;padding-bottom:40px">
+
+  <!-- Agregar producto -->
+  <div style="background:#fff;margin:14px 16px;border-radius:14px;padding:18px;box-shadow:0 1px 4px rgba(0,0,0,0.07)">
+    <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;color:#999;margin-bottom:12px">➕ Nuevo producto</div>
+    <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Nombre</label>
+    <input type="text" id="np-nombre" placeholder="ej: Pastafrola" oninput="actualizarId()"
+      style="display:block;width:100%;margin:5px 0 12px;border:1.5px solid #ddd;border-radius:10px;padding:11px;font-size:0.95rem">
+    <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Código del producto (editable)</label>
+    <input type="text" id="np-id" placeholder="ej: PS-PTF"
+      style="display:block;width:100%;margin:5px 0 12px;border:1.5px solid #ddd;border-radius:10px;padding:11px;font-size:0.95rem;font-family:monospace;background:#fafafa">
+    <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Grupo</label>
+    <select id="np-grupo" onchange="actualizarId()" style="display:block;width:100%;margin:5px 0 12px;border:1.5px solid #ddd;border-radius:10px;padding:11px;font-size:0.95rem;background:#fafafa">
+      <option value="Pasteleria">Pastelería</option>
+      <option value="Panaderia">Panadería</option>
+      <option value="Combos">Combos</option>
+      <option value="Café">Café</option>
+      <option value="Bebidas Frias">Bebidas Frías</option>
+    </select>
+    <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Precio de venta ($)</label>
+    <input type="number" id="np-precio" placeholder="0" inputmode="numeric"
+      style="display:block;width:100%;margin:5px 0 12px;border:1.5px solid #ddd;border-radius:10px;padding:11px;font-size:0.95rem">
+    <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Tipo de costo</label>
+    <div style="display:flex;gap:8px;margin:5px 0 12px">
+      <button id="tc-directo" onclick="setTipoCosto('directo')"
+        style="flex:1;padding:10px;border:2px solid #1a3a2c;border-radius:10px;background:#f0faf5;font-weight:700;font-size:0.85rem;cursor:pointer;color:#1a3a2c">
+        Comprado
+      </button>
+      <button id="tc-receta" onclick="setTipoCosto('receta')"
+        style="flex:1;padding:10px;border:2px solid #ddd;border-radius:10px;background:#fafafa;font-weight:700;font-size:0.85rem;cursor:pointer;color:#666">
+        Con receta
+      </button>
+    </div>
+    <!-- Costo directo -->
+    <div id="np-costo-wrap">
+      <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Costo directo ($)</label>
+      <input type="number" id="np-costo" placeholder="0" inputmode="numeric"
+        style="display:block;width:100%;margin:5px 0 0;border:1.5px solid #ddd;border-radius:10px;padding:11px;font-size:0.95rem">
+    </div>
+
+    <!-- Receta -->
+    <div id="np-receta-wrap" style="display:none">
+      <label style="font-size:0.72rem;font-weight:700;color:#666;text-transform:uppercase">Ingredientes de la receta</label>
+
+      <!-- Selector de insumo -->
+      <div style="background:#f5f0eb;border-radius:10px;padding:12px;margin-top:8px">
+        <select id="rec-insumo-sel"
+          style="width:100%;margin-bottom:8px;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.9rem;background:#fff">
+          <option value="">— Seleccioná insumo existente —</option>
+          <option value="__nuevo__">➕ Crear insumo nuevo</option>
+        </select>
+
+        <!-- Insumo nuevo (oculto por defecto) -->
+        <div id="rec-insumo-nuevo" style="display:none">
+          <input type="text" id="rec-ins-nombre" placeholder="Nombre del insumo (ej: Dulce de membrillo)"
+            style="width:100%;margin-bottom:6px;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.85rem">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+            <div>
+              <div style="font-size:0.65rem;color:#999;margin-bottom:2px">Unidad compra</div>
+              <select id="rec-ins-ucomp" style="width:100%;padding:7px;border:1.5px solid #ddd;border-radius:8px;font-size:0.82rem">
+                <option value="u">u (unidad)</option>
+                <option value="kg">kg</option>
+                <option value="lts">lts</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:0.65rem;color:#999;margin-bottom:2px">Unidad base</div>
+              <select id="rec-ins-ubase" style="width:100%;padding:7px;border:1.5px solid #ddd;border-radius:8px;font-size:0.82rem">
+                <option value="u">u</option>
+                <option value="gr">gr</option>
+                <option value="ml">ml</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:0.65rem;color:#999;margin-bottom:2px">Factor</div>
+              <input type="number" id="rec-ins-factor" value="1" placeholder="1000"
+                style="width:100%;padding:7px;border:1.5px solid #ddd;border-radius:8px;font-size:0.82rem">
+            </div>
+          </div>
+          <input type="number" id="rec-ins-precio" placeholder="Precio por unidad de compra ($)"
+            style="width:100%;margin-bottom:6px;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.85rem">
+        </div>
+
+        <!-- Cantidad en receta -->
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:4px">
+          <input type="number" id="rec-cantidad" placeholder="Cantidad usada"
+            style="padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.9rem">
+          <select id="rec-unidad"
+            style="padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.9rem;background:#fff">
+            <option value="u">u</option>
+            <option value="gr">gr</option>
+            <option value="ml">ml</option>
+          </select>
+        </div>
+        <button onclick="agregarIngrediente()"
+          style="width:100%;margin-top:8px;padding:10px;background:#2c1a0e;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">
+          + Agregar ingrediente
+        </button>
+      </div>
+
+      <!-- Lista ingredientes agregados -->
+      <div id="rec-lista" style="margin-top:8px"></div>
+    </div>
+    <button onclick="agregarProducto()"
+      style="width:100%;margin-top:16px;padding:14px;background:#1a3a2c;color:#fff;border:none;border-radius:12px;font-size:1rem;font-weight:700;cursor:pointer">
+      Agregar producto
+    </button>
+  </div>
+
+  <!-- Lista productos -->
+  <div style="font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#999;padding:8px 20px 4px">
+    Productos actuales
+  </div>
+  <div id="lista-gestion"><div style="text-align:center;padding:30px;color:#aaa;font-size:0.9rem">Cargando...</div></div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h3 id="modal-title"></h3>
+    <div class="modal-current" id="modal-current"></div>
+    <label>Nuevo precio ($)</label>
+    <input type="number" id="modal-precio" placeholder="0" min="0" inputmode="numeric">
+    <label>Vigente desde</label>
+    <input type="date" id="modal-fecha">
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-confirm" id="btn-confirm" onclick="confirmar()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const APPS_SCRIPT_URL    = "https://script.google.com/macros/s/AKfycbxYsISwmVrgESI-A2acS4Hy64mMFGC_6PoR4MpgkAupK1-MJrngEtWcoyUDReMPog6UUg/exec";
+const PRODUCTOS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxqdaCwdm0a9kB0WUcrVO2_GeHiZYZBjgWs-NYfUBJtODHMiOoCDsKF_Z4iMKs1ODl6/exec";
+const INSUMOS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQVMIBgRm2JjLmGlpgz-p1O2E02-wl7BLJQGM0EUXAOvznQ0HXFkct0tNL5zeL-SCjDW6LIdbB-vIQz/pub?gid=844322540&single=true&output=csv";
+
+let pendiente = null;
+document.getElementById("fecha-hoy").textContent = new Date().toLocaleDateString("es-AR");
+document.getElementById("modal-fecha").value = new Date().toISOString().slice(0,10);
+
+async function cargarDatos() {
+  try {
+    const res  = await fetch(APPS_SCRIPT_URL);
+    const data = await res.json();
+    renderProductos(data.productos || []);
+  } catch(e) {
+    document.getElementById("list-productos").innerHTML = '<div class="loading">❌ Error al cargar</div>';
+  }
+}
+cargarDatos();
+
+function fmt(n) { return "$" + Number(n).toLocaleString("es-AR"); }
+
+// Grupos para organizar visualmente
+const GRUPOS = {
+  "Combos":     ["CB-MD","CB-GR","CB-CK","CB-BDN"],
+  "Cafés":      ["CF-GR","CF-MD","CF-CH","CF-FR","CF-TE"],
+  "Pastelería": ["PS-ALF","PS-CK","PS-CKP","PS-BRW"],
+  "Panadería":  ["PND-CRS","PND-CRSJYQ","PND-BDN","PND-MDL","PND-MFLD","PND-TRT"],
+  "Bebidas":    ["BF-JG","BF-LT","BF-BT","BF-KMB","BF-LIC"],
+};
+
+function renderProductos(items) {
+  const byId = {};
+  items.forEach(i => byId[i.producto_id] = i);
+
+  let html = "";
+  for (const [grupo, ids] of Object.entries(GRUPOS)) {
+    const grupoItems = ids.map(id => byId[id]).filter(Boolean);
+    if (!grupoItems.length) continue;
+    html += `<div class="group-title">${grupo}</div>`;
+    grupoItems.forEach(i => {
+      html += `
+        <div class="item">
+          <div class="item-info">
+            <div class="item-name">${i.nombre}</div>
+            <div class="item-meta">desde ${i.vigente_desde}</div>
+          </div>
+          <span class="item-precio">${fmt(i.precio_actual)}</span>
+          <button class="btn-update" onclick='abrirModal("${i.producto_id}","${i.nombre}",${i.precio_actual})'>
+            Actualizar
+          </button>
+        </div>`;
+    });
+  }
+  document.getElementById("list-productos").innerHTML = html || '<div class="loading">Sin datos</div>';
+}
+
+function abrirModal(id, nombre, precioActual) {
+  pendiente = { id };
+  document.getElementById("modal-title").textContent   = nombre;
+  document.getElementById("modal-current").textContent = "Precio actual: " + fmt(precioActual);
+  document.getElementById("modal-precio").value = "";
+  document.getElementById("modal-fecha").value  = new Date().toISOString().slice(0,10);
+  document.getElementById("overlay").className  = "overlay show";
+  setTimeout(() => document.getElementById("modal-precio").focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById("overlay").className = "overlay";
+  pendiente = null;
+}
+
+async function confirmar() {
+  const precio = document.getElementById("modal-precio").value;
+  const fecha  = document.getElementById("modal-fecha").value;
+  if (!precio) { showToast("Ingresá el nuevo precio", true); return; }
+
+  const btn = document.getElementById("btn-confirm");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...pendiente, nuevo_precio: parseFloat(precio), fecha })
+    });
+    showToast("✅ Precio actualizado");
+    closeModal();
+    setTimeout(() => cargarDatos(), 1500);
+  } catch(e) {
+    showToast("❌ Error de conexión", true);
+  } finally {
+    btn.disabled = false; btn.textContent = "Guardar";
+  }
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast" + (isError?" error":"") + " show";
+  setTimeout(() => t.className = "toast" + (isError?" error":""), 3000);
+}
+
+document.getElementById("overlay").addEventListener("click", e => {
+  if (e.target === document.getElementById("overlay")) closeModal();
+});
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function showTab(t) {
+  document.getElementById("tab-precios").style.display   = t==="precios"   ? "" : "none";
+  document.getElementById("tab-productos").style.display = t==="productos" ? "" : "none";
+  ["precios","productos"].forEach(tab => {
+    const btn = document.getElementById("tab-"+tab+"-btn");
+    btn.style.color = tab===t ? "#1a3a2c" : "#999";
+    btn.style.borderBottom = tab===t ? "3px solid #1a3a2c" : "3px solid transparent";
+  });
+  if (t==="productos") cargarGestion();
+}
+
+// ── Gestión de productos ──────────────────────────────────────────────────────
+let tipoCosto = "directo";
+let todosProductos = [];
+
+let insumosDisponibles = [];
+let recetaActual = [];
+
+function setTipoCosto(t) {
+  tipoCosto = t;
+  const actS = "flex:1;padding:10px;border:2px solid #1a3a2c;border-radius:10px;background:#f0faf5;font-weight:700;font-size:0.85rem;cursor:pointer;color:#1a3a2c";
+  const inS  = "flex:1;padding:10px;border:2px solid #ddd;border-radius:10px;background:#fafafa;font-weight:700;font-size:0.85rem;cursor:pointer;color:#666";
+  document.getElementById("tc-directo").setAttribute("style", t==="directo" ? actS : inS);
+  document.getElementById("tc-receta").setAttribute("style",  t==="receta"  ? actS : inS);
+  document.getElementById("np-costo-wrap").style.display   = t==="directo" ? "" : "none";
+  document.getElementById("np-receta-wrap").style.display  = t==="receta"  ? "" : "none";
+}
+
+function poblarSelectorInsumos(insumos) {
+  insumosDisponibles = insumos;
+  const sel = document.getElementById("rec-insumo-sel");
+  sel.innerHTML = '<option value="">— Seleccioná insumo existente —</option><option value="__nuevo__">➕ Crear insumo nuevo</option>';
+  insumos.forEach(ins => {
+    const opt = document.createElement("option");
+    opt.value = ins.insumo_id;
+    opt.textContent = `${ins.nombre} (${ins.insumo_id})`;
+    sel.appendChild(opt);
+  });
+  sel.addEventListener("change", () => {
+    document.getElementById("rec-insumo-nuevo").style.display =
+      sel.value === "__nuevo__" ? "" : "none";
+    // Auto-completar unidad base del insumo seleccionado
+    const ins = insumosDisponibles.find(i => i.insumo_id === sel.value);
+    if (ins) document.getElementById("rec-unidad").value = ins.unidad_base || "u";
+  });
+}
+
+function agregarIngrediente() {
+  const sel     = document.getElementById("rec-insumo-sel").value;
+  const cant    = parseFloat(document.getElementById("rec-cantidad").value);
+  const unidad  = document.getElementById("rec-unidad").value;
+
+  if (!sel || !cant) { showToast("Seleccioná insumo y cantidad", true); return; }
+
+  let ing = {};
+
+  if (sel === "__nuevo__") {
+    const nombre = document.getElementById("rec-ins-nombre").value.trim();
+    if (!nombre) { showToast("Ingresá el nombre del insumo", true); return; }
+    const ucomp  = document.getElementById("rec-ins-ucomp").value;
+    const ubase  = document.getElementById("rec-ins-ubase").value;
+    const factor = parseFloat(document.getElementById("rec-ins-factor").value) || 1;
+    const precio = parseFloat(document.getElementById("rec-ins-precio").value) || 0;
+    // Generar ID
+    const id = "INS-" + nombre.toUpperCase().replace(/[^A-Z]/g,"").slice(0,4);
+    ing = { insumo_id: id, nombre, unidad_compra: ucomp, unidad_base: ubase, factor, precio, cantidad: cant, unidad };
+  } else {
+    const ins = insumosDisponibles.find(i => i.insumo_id === sel);
+    ing = { insumo_id: sel, nombre: ins?.nombre || sel, cantidad: cant, unidad };
+  }
+
+  recetaActual.push(ing);
+  renderReceta();
+
+  // Limpiar campos
+  document.getElementById("rec-insumo-sel").value = "";
+  document.getElementById("rec-cantidad").value   = "";
+  document.getElementById("rec-insumo-nuevo").style.display = "none";
+}
+
+function quitarIngrediente(i) {
+  recetaActual.splice(i, 1);
+  renderReceta();
+}
+
+function renderReceta() {
+  const lista = document.getElementById("rec-lista");
+  if (!recetaActual.length) { lista.innerHTML = ""; return; }
+  lista.innerHTML = recetaActual.map((ing, i) => `
+    <div style="display:flex;align-items:center;background:#fff;border-radius:8px;padding:8px 12px;margin:4px 0;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div style="flex:1;font-size:0.85rem">
+        <b>${ing.nombre}</b>
+        <span style="color:#aaa;margin-left:6px">${ing.cantidad} ${ing.unidad}</span>
+        ${ing.precio ? `<span style="color:#aaa;margin-left:6px">$${ing.precio}</span>` : ""}
+      </div>
+      <button onclick="quitarIngrediente(${i})"
+        style="border:none;background:none;color:#c0392b;font-size:1.1rem;cursor:pointer">✕</button>
+    </div>`).join("");
+}
+
+function generarId(nombre, grupo) {
+  const m = {"Pasteleria":"PS","Panaderia":"PND","Combos":"CB","Café":"CF","Bebidas Frias":"BF"};
+  const pre = m[grupo] || "XX";
+  const abr = nombre.toUpperCase().replace(/[^A-Z]/g,"").slice(0,3);
+  return pre + "-" + abr;
+}
+
+function actualizarId() {
+  const nombre = document.getElementById("np-nombre").value.trim();
+  const grupo  = document.getElementById("np-grupo").value;
+  if (nombre) document.getElementById("np-id").value = generarId(nombre, grupo);
+}
+
+async function cargarInsumos() {
+  if (INSUMOS_CSV_URL === "PEGAR_URL_INSUMOS_CSV_AQUI") return;
+  try {
+    const res = await fetch(INSUMOS_CSV_URL);
+    const txt = await res.text();
+    const lines = txt.trim().split("\n");
+    const headers = lines[0].split(",");
+    const insumos = lines.slice(1).map(l => {
+      const vals = l.split(",");
+      const obj = {};
+      headers.forEach((h,i) => obj[h.trim()] = (vals[i]||"").trim());
+      return obj;
+    });
+    poblarSelectorInsumos(insumos);
+  } catch(e) {}
+}
+
+async function cargarGestion() {
+  try {
+    const res = await fetch(PRODUCTOS_SCRIPT_URL);
+    const d   = await res.json();
+    todosProductos = d.productos || [];
+    renderGestion();
+    // Cargar insumos desde CSV separado
+    await cargarInsumos();
+  } catch(e) {
+    document.getElementById("lista-gestion").innerHTML =
+      '<div style="text-align:center;padding:20px;color:#aaa">❌ Error al cargar</div>';
+  }
+}
+
+function renderGestion() {
+  const grupos = {};
+  todosProductos.forEach(p => { (grupos[p.grupo||"Otros"] = grupos[p.grupo||"Otros"]||[]).push(p); });
+  let html = "";
+  for (const [g, prods] of Object.entries(grupos)) {
+    html += `<div style="font-size:0.65rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#999;padding:10px 20px 4px">${g}</div>`;
+    prods.forEach(p => {
+      const activo = String(p.activo) === "1";
+      html += `<div style="background:#fff;margin:6px 16px;border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.06);opacity:${activo?1:0.5}">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:0.9rem">${p.nombre}</div>
+          <div style="font-size:0.7rem;color:#aaa">${p.producto_id} · ${p.tipo_costo||''}</div>
+        </div>
+        <button onclick="${activo?`desactivar('${p.producto_id}')`:`reactivar('${p.producto_id}')`}"
+          style="padding:7px 14px;border:2px solid ${activo?'#c0392b':'#1a3a2c'};border-radius:8px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;color:${activo?'#c0392b':'#1a3a2c'}">
+          ${activo?"Desactivar":"Activar"}
+        </button>
+      </div>`;
+    });
+  }
+  document.getElementById("lista-gestion").innerHTML = html;
+}
+
+async function agregarProducto() {
+  const nombre = document.getElementById("np-nombre").value.trim();
+  const grupo  = document.getElementById("np-grupo").value;
+  const precio = parseFloat(document.getElementById("np-precio").value);
+  const costo  = parseFloat(document.getElementById("np-costo").value) || 0;
+  if (!nombre) { showToast("Ingresá el nombre", true); return; }
+  if (!precio) { showToast("Ingresá el precio", true); return; }
+  if (tipoCosto === "receta" && recetaActual.length === 0) {
+    showToast("Agregá al menos un ingrediente", true); return;
+  }
+  const producto_id = (document.getElementById("np-id").value.trim() || generarId(nombre, grupo)).toUpperCase();
+  const hoy = new Date().toISOString().slice(0,10);
+
+  // 1. Guardar producto + receta/insumos en Aronda_Productos
+  await fetch(PRODUCTOS_SCRIPT_URL, {
+    method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      action:"add", producto_id, nombre, grupo,
+      tipo_costo: tipoCosto,
+      costo_directo: tipoCosto === "directo" ? costo : "",
+      receta: tipoCosto === "receta" ? recetaActual : []
+    })
+  });
+
+  // 2. Registrar precio de venta en Aronda_Precios
+  await fetch(APPS_SCRIPT_URL, {
+    method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({tipo:"producto", id:producto_id, nuevo_precio:precio, fecha:hoy})
+  });
+
+  showToast("✅ " + nombre + " agregado (" + producto_id + ")");
+
+  // Reset
+  document.getElementById("np-nombre").value = "";
+  document.getElementById("np-precio").value = "";
+  document.getElementById("np-costo").value  = "";
+  recetaActual = [];
+  renderReceta();
+  setTimeout(() => cargarGestion(), 1500);
+}
+
+async function desactivar(id) {
+  await fetch(PRODUCTOS_SCRIPT_URL, {
+    method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"deactivate", producto_id:id})
+  });
+  showToast("Producto desactivado");
+  setTimeout(() => cargarGestion(), 1500);
+}
+
+async function reactivar(id) {
+  await fetch(PRODUCTOS_SCRIPT_URL, {
+    method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"reactivate", producto_id:id})
+  });
+  showToast("Producto activado");
+  setTimeout(() => cargarGestion(), 1500);
+}
+</script>
+</body>
+</html>

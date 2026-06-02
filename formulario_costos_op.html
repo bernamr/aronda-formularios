@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Aronda — Costos Operativos</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; padding-bottom: 40px; }
+
+header {
+  background: #1a2a3a; color: #d3e6f5;
+  padding: 16px 20px; position: sticky; top: 0; z-index: 10;
+}
+header h1 { font-size: 1.1rem; letter-spacing: 1px; }
+header p  { font-size: 0.75rem; opacity: 0.6; margin-top: 2px; }
+
+.card {
+  background: #fff; margin: 16px;
+  border-radius: 14px; padding: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+
+.section-title {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: #999; margin-bottom: 10px;
+}
+
+/* Concepto rápido */
+.concepto-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; margin-bottom: 0;
+}
+.concepto-btn {
+  padding: 14px 10px; border: 2px solid #ddd;
+  border-radius: 10px; background: #fafafa;
+  font-size: 0.9rem; font-weight: 700; cursor: pointer;
+  color: #555; text-align: center; transition: all .15s;
+}
+.concepto-btn.active { background: #1a2a3a; border-color: #1a2a3a; color: #fff; }
+.concepto-btn .sub { font-size: 0.7rem; font-weight: 400; opacity: 0.7; display: block; margin-top: 2px; }
+
+/* Otro */
+.otro-input {
+  width: 100%; margin-top: 10px; padding: 12px;
+  border: 1.5px solid #ddd; border-radius: 10px;
+  font-size: 0.95rem; color: #333; display: none;
+}
+.otro-input.show { display: block; }
+
+/* Frecuencia */
+.freq-group { display: flex; gap: 10px; }
+.freq-btn {
+  flex: 1; padding: 11px; border: 2px solid #ddd;
+  border-radius: 10px; background: #fafafa;
+  font-size: 0.9rem; font-weight: 700; cursor: pointer; color: #666;
+}
+.freq-btn.active { background: #e8f4fd; border-color: #3a9af4; color: #1565c0; }
+
+label {
+  display: block; font-size: 0.72rem; font-weight: 700;
+  color: #888; text-transform: uppercase; margin-bottom: 6px;
+}
+input[type=number], input[type=date], textarea {
+  width: 100%; padding: 12px; border: 1.5px solid #ddd;
+  border-radius: 10px; font-size: 1rem; color: #333;
+}
+input:focus, textarea:focus { outline: none; border-color: #1a2a3a; }
+textarea { resize: none; height: 70px; font-family: inherit; }
+
+.submit-btn {
+  width: calc(100% - 32px); margin: 0 16px;
+  padding: 16px; background: #1a2a3a; color: #fff;
+  border: none; border-radius: 14px; font-size: 1.05rem;
+  font-weight: 700; cursor: pointer;
+}
+.submit-btn:disabled { opacity: 0.4; }
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #1a2a3a; color: #fff;
+  padding: 12px 24px; border-radius: 30px;
+  font-weight: 700; transition: transform .3s; z-index: 200;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #c0392b; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 ARONDA — Costos Operativos</h1>
+  <p id="fecha-hoy"></p>
+</header>
+
+<div class="card">
+  <div class="section-title">Concepto</div>
+  <div class="concepto-grid">
+    <button class="concepto-btn" onclick="setConcepto('sueldos','semanal')">
+      👥 Sueldos <span class="sub">semanal</span>
+    </button>
+    <button class="concepto-btn" onclick="setConcepto('luz','mensual')">
+      💡 Luz <span class="sub">mensual</span>
+    </button>
+    <button class="concepto-btn" onclick="setConcepto('CM','mensual')">
+      🏠 CM <span class="sub">mensual</span>
+    </button>
+    <button class="concepto-btn" onclick="setConcepto('otro','')">
+      ✏️ Otro <span class="sub">libre</span>
+    </button>
+  </div>
+  <input class="otro-input" id="otro-texto" type="text" placeholder="Nombre del concepto...">
+</div>
+
+<div class="card">
+  <div class="section-title">Frecuencia</div>
+  <div class="freq-group">
+    <button class="freq-btn" id="freq-semanal" onclick="setFreq('semanal')">📅 Semanal</button>
+    <button class="freq-btn" id="freq-mensual" onclick="setFreq('mensual')">🗓️ Mensual</button>
+  </div>
+</div>
+
+<div class="card">
+  <label>Monto ($)</label>
+  <input type="number" id="monto" placeholder="0" min="0" inputmode="numeric">
+</div>
+
+<div class="card">
+  <label>Fecha</label>
+  <input type="date" id="fecha">
+</div>
+
+<div class="card">
+  <label>Comentario (opcional)</label>
+  <textarea id="comentario" placeholder="ej: aguinaldo, bono, etc."></textarea>
+</div>
+
+<button class="submit-btn" id="submitBtn" onclick="enviar()">Registrar costo</button>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx6k67QHOmbKv7kFVxDFatoW5rv5BsYLa5LNwxfsKhOT2kQbEVuqbZBtmwK3tB3cjXDHA/exec";
+
+let concepto = null;
+let frecuencia = null;
+
+document.getElementById("fecha-hoy").textContent = new Date().toLocaleDateString("es-AR");
+document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+
+function setConcepto(c, freq) {
+  concepto = c;
+  document.querySelectorAll(".concepto-btn").forEach(b => b.className = "concepto-btn");
+  event.currentTarget.className = "concepto-btn active";
+  document.getElementById("otro-texto").className = c === "otro" ? "otro-input show" : "otro-input";
+  if (freq) setFreq(freq);
+}
+
+function setFreq(f) {
+  frecuencia = f;
+  document.getElementById("freq-semanal").className = "freq-btn" + (f === "semanal" ? " active" : "");
+  document.getElementById("freq-mensual").className = "freq-btn" + (f === "mensual" ? " active" : "");
+}
+
+async function enviar() {
+  const conceptoFinal = concepto === "otro"
+    ? document.getElementById("otro-texto").value.trim()
+    : concepto;
+
+  const monto     = parseFloat(document.getElementById("monto").value);
+  const fecha     = document.getElementById("fecha").value;
+  const comentario = document.getElementById("comentario").value.trim();
+
+  if (!conceptoFinal) { showToast("Seleccioná o escribí un concepto", true); return; }
+  if (!frecuencia)    { showToast("Seleccioná la frecuencia", true); return; }
+  if (!monto || monto <= 0) { showToast("Ingresá el monto", true); return; }
+  if (!fecha)         { showToast("Seleccioná la fecha", true); return; }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true; btn.textContent = "Registrando...";
+
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fecha, concepto: conceptoFinal, frecuencia, monto, comentario })
+    });
+
+    showToast("✅ Costo registrado");
+
+    // Reset
+    concepto = null; frecuencia = null;
+    document.querySelectorAll(".concepto-btn").forEach(b => b.className = "concepto-btn");
+    document.getElementById("freq-semanal").className = "freq-btn";
+    document.getElementById("freq-mensual").className = "freq-btn";
+    document.getElementById("monto").value = "";
+    document.getElementById("comentario").value = "";
+    document.getElementById("otro-texto").className = "otro-input";
+    document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+
+  } catch(e) {
+    showToast("❌ Error de conexión", true);
+  } finally {
+    btn.disabled = false; btn.textContent = "Registrar costo";
+  }
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast" + (isError?" error":"") + " show";
+  setTimeout(() => t.className = "toast" + (isError?" error":""), 3000);
+}
+</script>
+</body>
+</html>

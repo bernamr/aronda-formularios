@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Aronda — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --cafe:   #2c1a0e;
+  --verde:  #1a3a2c;
+  --gold:   #c47a00;
+  --bg:     #f5f0eb;
+  --card:   #ffffff;
+  --text:   #222222;
+  --muted:  #888888;
+  --border: #e0d6cc;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+       background: var(--bg); color: var(--text); padding-bottom: 60px; }
+
+/* HEADER */
+header {
+  background: var(--cafe); color: #f5e6d3;
+  padding: 14px 20px; display: flex; align-items: center;
+  justify-content: space-between; position: sticky; top: 0; z-index: 20;
+}
+header h1 { font-size: 1rem; letter-spacing: 1px; }
+#last-update { font-size: 0.68rem; opacity: 0.6; }
+
+/* FILTROS */
+.filters {
+  background: var(--card); border-bottom: 1px solid var(--border);
+  padding: 12px 16px; position: sticky; top: 49px; z-index: 19;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.filter-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.filter-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+                color: var(--muted); width: 60px; flex-shrink: 0; }
+.btn-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.fbtn {
+  padding: 6px 12px; border: 1.5px solid var(--border); border-radius: 20px;
+  background: var(--bg); font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  color: var(--muted); transition: all .15s;
+}
+.fbtn.active { background: var(--cafe); border-color: var(--cafe); color: #fff; }
+select.fsel {
+  padding: 6px 10px; border: 1.5px solid var(--border); border-radius: 20px;
+  background: var(--bg); font-size: 0.78rem; color: var(--text); cursor: pointer;
+}
+input[type=month], input[type=date], input[type=week] {
+  padding: 5px 10px; border: 1.5px solid var(--border); border-radius: 20px;
+  background: var(--bg); font-size: 0.78rem; color: var(--text);
+}
+
+/* TABS */
+.tabs {
+  display: flex; background: var(--card);
+  border-bottom: 2px solid var(--border);
+}
+.tab {
+  flex: 1; padding: 12px 4px; text-align: center;
+  font-size: 0.8rem; font-weight: 700; cursor: pointer;
+  color: var(--muted); border-bottom: 3px solid transparent;
+}
+.tab.active { color: var(--cafe); border-bottom-color: var(--cafe); }
+
+/* SECCIÓN */
+.section { display: none; }
+.section.active { display: block; }
+
+/* KPIs */
+.kpi-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 10px; padding: 14px 16px;
+}
+.kpi {
+  background: var(--card); border-radius: 12px;
+  padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.kpi-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+             color: var(--muted); margin-bottom: 4px; }
+.kpi-value { font-size: 1.35rem; font-weight: 800; color: var(--cafe); }
+.kpi-value.verde { color: var(--verde); }
+.kpi-value.rojo  { color: #c0392b; }
+.kpi-sub  { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+/* CHARTS */
+.chart-card {
+  background: var(--card); margin: 0 16px 14px;
+  border-radius: 14px; padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.chart-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+               color: var(--muted); margin-bottom: 12px; }
+.chart-wrap { position: relative; height: 220px; }
+
+/* TABLA */
+.tabla-card {
+  background: var(--card); margin: 0 16px 14px;
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.tabla-card table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.tabla-card th {
+  background: var(--bg); padding: 10px 12px;
+  text-align: left; font-size: 0.65rem; font-weight: 700;
+  text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+.tabla-card th:hover { color: var(--cafe); }
+.tabla-card td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.tabla-card tr:last-child td { border-bottom: none; }
+.td-right { text-align: right; }
+
+/* LOADING */
+.loading-overlay {
+  position: fixed; inset: 0; background: rgba(245,240,235,0.9);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 100; gap: 12px;
+}
+.spinner {
+  width: 40px; height: 40px; border: 4px solid var(--border);
+  border-top-color: var(--cafe); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Cargando datos...</div>
+</div>
+
+<header>
+  <h1>☕ ARONDA — Dashboard</h1>
+  <span id="last-update"></span>
+</header>
+
+<!-- FILTROS -->
+<div class="filters">
+  <div class="filter-row">
+    <span class="filter-label">Período</span>
+    <div class="btn-group">
+      <button class="fbtn" onclick="setPeriod('dia')">Día</button>
+      <button class="fbtn" onclick="setPeriod('semana')">Semana</button>
+      <button class="fbtn active" onclick="setPeriod('mes')">Mes</button>
+      <button class="fbtn" onclick="setPeriod('total')">Total</button>
+    </div>
+    <input type="month" id="picker-mes" value="">
+    <input type="date"  id="picker-dia" value="" style="display:none">
+    <input type="week"  id="picker-semana" value="" style="display:none">
+  </div>
+  <div class="filter-row">
+    <span class="filter-label">Turno</span>
+    <div class="btn-group">
+      <button class="fbtn active" onclick="setFilter('turno','todos')">Todos</button>
+      <button class="fbtn" onclick="setFilter('turno','manana')">☀️ Mañana</button>
+      <button class="fbtn" onclick="setFilter('turno','tarde')">🌙 Tarde</button>
+    </div>
+  </div>
+  <div class="filter-row">
+    <span class="filter-label">Empleada</span>
+    <div class="btn-group">
+      <button class="fbtn active" onclick="setFilter('empleada','todos')">Todas</button>
+      <button class="fbtn" onclick="setFilter('empleada','Nadia')">Nadia</button>
+      <button class="fbtn" onclick="setFilter('empleada','Lara')">Lara</button>
+    </div>
+    <select class="fsel" id="sel-producto" onchange="setFilter('producto',this.value)">
+      <option value="todos">Todos los productos</option>
+    </select>
+  </div>
+  <div class="filter-row">
+    <span class="filter-label">Grupo</span>
+    <div class="btn-group">
+      <button class="fbtn active" onclick="setFilter('grupo','todos')">Todos</button>
+      <button class="fbtn" onclick="setFilter('grupo','Combos')">Combos</button>
+      <button class="fbtn" onclick="setFilter('grupo','Café')">Café</button>
+      <button class="fbtn" onclick="setFilter('grupo','Pasteleria')">Pastelería</button>
+      <button class="fbtn" onclick="setFilter('grupo','Panaderia')">Panadería</button>
+      <button class="fbtn" onclick="setFilter('grupo','Bebidas Frias')">Bebidas</button>
+    </div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="showTab('ventas')">📦 Ventas</div>
+  <div class="tab" onclick="showTab('facturacion')">💰 Facturación</div>
+  <div class="tab" onclick="showTab('rentabilidad')">📈 Rentabilidad</div>
+  <div class="tab" onclick="showTab('margen')">🎯 Margen</div>
+</div>
+
+<!-- VENTAS -->
+<div class="section active" id="tab-ventas">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Unidades vendidas</div><div class="kpi-value" id="v-unidades">—</div></div>
+    <div class="kpi"><div class="kpi-label">Productos distintos</div><div class="kpi-value" id="v-productos">—</div></div>
+    <div class="kpi"><div class="kpi-label">Turno más activo</div><div class="kpi-value" id="v-turno">—</div></div>
+    <div class="kpi"><div class="kpi-label">Top producto</div><div class="kpi-value" id="v-top" style="font-size:1rem">—</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Unidades por producto</div>
+    <div class="chart-wrap"><canvas id="chart-ventas-prod"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Evolución de ventas</div>
+    <div class="chart-wrap"><canvas id="chart-ventas-evol"></canvas></div>
+  </div>
+</div>
+
+<!-- FACTURACIÓN -->
+<div class="section" id="tab-facturacion">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Facturación total</div><div class="kpi-value verde" id="f-total">—</div></div>
+    <div class="kpi"><div class="kpi-label">Ticket promedio</div><div class="kpi-value" id="f-ticket">—</div></div>
+    <div class="kpi"><div class="kpi-label">Mejor producto</div><div class="kpi-value" id="f-top" style="font-size:1rem">—</div></div>
+    <div class="kpi"><div class="kpi-label">vs período anterior</div><div class="kpi-value" id="f-vs">—</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Facturación por producto</div>
+    <div class="chart-wrap"><canvas id="chart-fact-prod"></canvas></div>
+  </div>
+  <div class="tabla-card">
+    <table>
+      <thead><tr><th>Producto</th><th class="td-right">Unidades</th><th class="td-right">Facturación</th></tr></thead>
+      <tbody id="tabla-fact"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MARGEN -->
+<div class="section" id="tab-margen">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Margen bruto promedio</div><div class="kpi-value" id="m-avg">—</div></div>
+    <div class="kpi"><div class="kpi-label">Mejor margen</div><div class="kpi-value verde" id="m-best" style="font-size:0.9rem">—</div></div>
+    <div class="kpi"><div class="kpi-label">Peor margen</div><div class="kpi-value rojo" id="m-worst" style="font-size:0.9rem">—</div></div>
+    <div class="kpi"><div class="kpi-label">Productos rentables</div><div class="kpi-value verde" id="m-count">—</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Margen % por producto</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="chart-margen-prod"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Evolución del margen % en el tiempo</div>
+    <div class="chart-wrap"><canvas id="chart-margen-evol"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Punto de equilibrio — unidades por día para cubrir costos operativos</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="chart-breakeven"></canvas></div>
+  </div>
+  <div class="tabla-card">
+    <table>
+      <thead>
+        <tr>
+          <th onclick="sortTabla(0)">Producto ↕</th>
+          <th class="td-right" onclick="sortTabla(1)">Precio ↕</th>
+          <th class="td-right" onclick="sortTabla(2)">Costo var ↕</th>
+          <th class="td-right" onclick="sortTabla(3)">Margen unit. ↕</th>
+          <th class="td-right" onclick="sortTabla(4)">Margen % ↕</th>
+          <th class="td-right" onclick="sortTabla(5)">P.E. / día ↕</th>
+          <th class="td-right" onclick="sortTabla(6)">Costo op. diario ↕</th>
+        </tr>
+      </thead>
+      <tbody id="tabla-margen"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- RENTABILIDAD -->
+<div class="section" id="tab-rentabilidad">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Facturación</div><div class="kpi-value verde" id="r-revenue">—</div></div>
+    <div class="kpi"><div class="kpi-label">Costo variable</div><div class="kpi-value rojo" id="r-costo-var">—</div></div>
+    <div class="kpi"><div class="kpi-label">Costo operativo</div><div class="kpi-value rojo" id="r-costo-op">—</div></div>
+    <div class="kpi"><div class="kpi-label">Rentabilidad neta</div><div class="kpi-value" id="r-neta">—</div></div>
+    <div class="kpi"><div class="kpi-label">Margen bruto</div><div class="kpi-value" id="r-margen-bruto">—</div></div>
+    <div class="kpi"><div class="kpi-label">Margen neto</div><div class="kpi-value" id="r-margen-neto">—</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Composición de ingresos vs costos</div>
+    <div class="chart-wrap"><canvas id="chart-rent-stack"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Rentabilidad mensual</div>
+    <div class="chart-wrap"><canvas id="chart-rent-evol"></canvas></div>
+  </div>
+</div>
+
+<script>
+// ── URLs ───────────────────────────────────────────────────────────────────────
+const URL_DETALLE  = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQpq8IhT5HFkqmfma57pKx1GsC_gio-H2NoNU1dvejmxsxjDLOU-K5NHbQPjLnIfVGeKEhUdbsYDh_k/pub?gid=1497902444&single=true&output=csv";
+const URL_COSTOS   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQpq8IhT5HFkqmfma57pKx1GsC_gio-H2NoNU1dvejmxsxjDLOU-K5NHbQPjLnIfVGeKEhUdbsYDh_k/pub?gid=420933623&single=true&output=csv";
+
+// ── Estado ─────────────────────────────────────────────────────────────────────
+let allData = [], costosOp = {}, charts = {};
+let period = "mes", filters = { turno: "todos", empleada: "todos", producto: "todos", grupo: "todos" };
+const now = new Date();
+
+// Inicializar pickers
+document.getElementById("picker-mes").value = now.toISOString().slice(0,7);
+document.getElementById("picker-dia").value = now.toISOString().slice(0,10);
+
+// ── CSV parser (maneja comillas y comas en valores) ───────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split("\n");
+  const headers = splitCSVLine(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = splitCSVLine(line);
+    const obj = {};
+    headers.forEach((h,i) => obj[h.trim()] = (vals[i]||"").trim());
+    return obj;
+  });
+}
+
+function splitCSVLine(line) {
+  const result = [];
+  let cur = "", inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === ',' && !inQuotes) { result.push(cur); cur = ""; }
+    else { cur += ch; }
+  }
+  result.push(cur);
+  return result;
+}
+
+// Parsea números con punto O coma como decimal (locale AR)
+function parseNum(s) {
+  if (s === null || s === undefined || s === "") return 0;
+  // Quitar comillas, puntos de miles, reemplazar coma decimal por punto
+  const clean = String(s).replace(/"/g,"").replace(/\./g,"").replace(",",".");
+  const v = parseFloat(clean);
+  return isNaN(v) ? 0 : v;
+}
+
+// ── Carga de datos ──────────────────────────────────────────────────────────────
+async function loadData() {
+  const [r1, r2] = await Promise.all([fetch(URL_DETALLE), fetch(URL_COSTOS)]);
+  const [t1, t2] = await Promise.all([r1.text(), r2.text()]);
+
+  allData = parseCSV(t1).map(d => ({
+    ...d,
+    cantidad:     parseNum(d.cantidad),
+    revenue:      parseNum(d.revenue),
+    costo_var:    parseNum(d.costo_var),
+    margen_bruto: parseNum(d.margen_bruto),
+  })).filter(d => d.producto_id && d.fecha);
+
+  // Mapa fecha → costo_op
+  parseCSV(t2).forEach(c => {
+    const v = parseNum(c.costo_op);
+    if (c.fecha && v > 0) costosOp[c.fecha] = v;
+  });
+
+  // Poblar selector de productos
+  const prods = [...new Set(allData.map(d => d.nombre))].sort();
+  const sel = document.getElementById("sel-producto");
+  prods.forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = opt.textContent = p;
+    sel.appendChild(opt);
+  });
+
+  document.getElementById("last-update").textContent =
+    "Actualizado " + new Date().toLocaleDateString("es-AR");
+  document.getElementById("loading").style.display = "none";
+  render();
+}
+
+// ── Filtros ──────────────────────────────────────────────────────────────────
+function setPeriod(p) {
+  period = p;
+  document.querySelectorAll(".filters .fbtn").forEach((b,i) => {
+    if (["dia","semana","mes","total"].includes(b.getAttribute("onclick")?.match(/'(\w+)'/)?.[1]))
+      b.className = "fbtn";
+  });
+  event.currentTarget.className = "fbtn active";
+  document.getElementById("picker-mes").style.display    = p==="mes"    ? "" : "none";
+  document.getElementById("picker-dia").style.display    = p==="dia"    ? "" : "none";
+  document.getElementById("picker-semana").style.display = p==="semana" ? "" : "none";
+  render();
+}
+
+function setFilter(key, val) {
+  filters[key] = val;
+  const groupMap = { turno: 1, empleada: 2, grupo: 3 };
+  if (groupMap[key] !== undefined) {
+    const rows = document.querySelectorAll(".filter-row");
+    rows[groupMap[key]].querySelectorAll(".fbtn").forEach(b => {
+      const v = b.getAttribute("onclick")?.match(/'([^']+)'\s*\)/)?.[1];
+      b.className = "fbtn" + (v === val ? " active" : "");
+    });
+  }
+  render();
+}
+
+function getFilteredData() {
+  const p = period;
+  const pickerMes    = document.getElementById("picker-mes").value;
+  const pickerDia    = document.getElementById("picker-dia").value;
+  const pickerSemana = document.getElementById("picker-semana").value;
+
+  return allData.filter(d => {
+    // Período
+    if (p === "mes"    && d.fecha.slice(0,7) !== pickerMes) return false;
+    if (p === "dia"    && d.fecha !== pickerDia) return false;
+    if (p === "semana") {
+      // Calcular semana del registro
+      const dDate = new Date(d.fecha + "T12:00:00");
+      const yr = dDate.getFullYear();
+      const wk = getWeekNumber(dDate);
+      const wkStr = `${yr}-W${String(wk).padStart(2,"0")}`;
+      if (wkStr !== pickerSemana) return false;
+    }
+    // Turno
+    if (filters.turno !== "todos" && d.turno !== filters.turno) return false;
+    // Empleada
+    if (filters.empleada !== "todos" && d.empleada !== filters.empleada) return false;
+    // Producto
+    if (filters.producto !== "todos" && d.nombre !== filters.producto) return false;
+    // Grupo
+    if (filters.grupo !== "todos" && d.grupo !== filters.grupo) return false;
+    return true;
+  });
+}
+
+function getFilteredCostosOp() {
+  const p = period;
+  const pickerMes = document.getElementById("picker-mes").value;
+  const pickerDia = document.getElementById("picker-dia").value;
+  const pickerSemana = document.getElementById("picker-semana").value;
+
+  return Object.entries(costosOp).filter(([fecha]) => {
+    if (p === "mes"    && fecha.slice(0,7) !== pickerMes) return false;
+    if (p === "dia"    && fecha !== pickerDia) return false;
+    if (p === "semana") {
+      const dDate = new Date(fecha + "T12:00:00");
+      const yr = dDate.getFullYear(); const wk = getWeekNumber(dDate);
+      if (`${yr}-W${String(wk).padStart(2,"0")}` !== pickerSemana) return false;
+    }
+    return true;
+  }).reduce((s,[,v]) => s + v, 0);
+}
+
+function getWeekNumber(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay()||7));
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  return Math.ceil((((date - yearStart) / 86400000) + 1)/7);
+}
+
+// ── Formato ──────────────────────────────────────────────────────────────────
+function fmt$  (n) { return "$" + Math.round(n).toLocaleString("es-AR"); }
+function fmtPct(n) { return (n*100).toFixed(1) + "%"; }
+
+// ── Render principal ──────────────────────────────────────────────────────────
+function render() {
+  const data    = getFilteredData();
+  // Si hay filtro de turno específico, asignar 50% del costo op a ese turno
+  const costoOpTotal = getFilteredCostosOp();
+  const costoOp = filters.turno !== "todos" ? costoOpTotal / 2 : costoOpTotal;
+  renderVentas(data);
+  renderFacturacion(data);
+  renderRentabilidad(data, costoOp);
+  renderMargen(data);
+}
+
+// ── VENTAS ───────────────────────────────────────────────────────────────────
+function renderVentas(data) {
+  const totalUnidades = data.reduce((s,d) => s + d.cantidad, 0);
+  const prods = [...new Set(data.map(d => d.nombre))].length;
+
+  // turno más activo
+  const byTurno = {};
+  data.forEach(d => byTurno[d.turno] = (byTurno[d.turno]||0) + d.cantidad);
+  const topTurno = Object.entries(byTurno).sort((a,b)=>b[1]-a[1])[0];
+
+  // top producto
+  const byProd = {};
+  data.forEach(d => byProd[d.nombre] = (byProd[d.nombre]||0) + d.cantidad);
+  const topProd = Object.entries(byProd).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById("v-unidades").textContent = totalUnidades.toLocaleString("es-AR");
+  document.getElementById("v-productos").textContent = prods;
+  document.getElementById("v-turno").textContent = topTurno ? (topTurno[0]==="manana"?"☀️ Mañana":"🌙 Tarde") : "—";
+  document.getElementById("v-top").textContent = topProd ? topProd[0] : "—";
+
+  // Chart por producto
+  const prodData = Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  drawBar("chart-ventas-prod", prodData.map(p=>p[0]), prodData.map(p=>p[1]),
+          "Unidades", "#2c1a0e");
+
+  // Evolución por mes
+  const byMes = {};
+  data.forEach(d => { const m=d.fecha.slice(0,7); byMes[m]=(byMes[m]||0)+d.cantidad; });
+  const meses = Object.keys(byMes).sort();
+  drawLine("chart-ventas-evol", meses, meses.map(m=>byMes[m]), "Unidades", "#2c1a0e");
+}
+
+// ── FACTURACIÓN ───────────────────────────────────────────────────────────────
+function renderFacturacion(data) {
+  const total = data.reduce((s,d) => s+d.revenue, 0);
+  const totalUnidades = data.reduce((s,d) => s+d.cantidad, 0);
+  const ticket = totalUnidades ? total/totalUnidades : 0;
+
+  const byProd = {};
+  data.forEach(d => {
+    if (!byProd[d.nombre]) byProd[d.nombre] = {rev:0, cant:0};
+    byProd[d.nombre].rev  += d.revenue;
+    byProd[d.nombre].cant += d.cantidad;
+  });
+  const sortedProds = Object.entries(byProd).sort((a,b)=>b[1].rev-a[1].rev);
+  const topProd = sortedProds[0];
+
+  document.getElementById("f-total").textContent  = fmt$(total);
+  document.getElementById("f-ticket").textContent = fmt$(ticket);
+  document.getElementById("f-top").textContent    = topProd ? topProd[0] : "—";
+  document.getElementById("f-vs").textContent     = "—";
+
+  drawBar("chart-fact-prod",
+    sortedProds.slice(0,10).map(p=>p[0]),
+    sortedProds.slice(0,10).map(p=>p[1].rev),
+    "Facturación $", "#1a3a2c");
+
+  // Tabla
+  const tbody = document.getElementById("tabla-fact");
+  tbody.innerHTML = sortedProds.slice(0,15).map(([nombre,v]) => `
+    <tr>
+      <td>${nombre}</td>
+      <td class="td-right">${v.cant.toLocaleString("es-AR")}</td>
+      <td class="td-right">${fmt$(v.rev)}</td>
+    </tr>`).join("");
+}
+
+// ── RENTABILIDAD ──────────────────────────────────────────────────────────────
+function renderRentabilidad(data, costoOp) {
+  const revenue  = data.reduce((s,d) => s+d.revenue, 0);
+  const costoVar = data.reduce((s,d) => s+d.costo_var, 0);
+  const margenB  = revenue - costoVar;
+  const rentaNeta = margenB - costoOp;
+
+  const pctBruto = revenue ? margenB/revenue : 0;
+  const pctNeto  = revenue ? rentaNeta/revenue : 0;
+
+  document.getElementById("r-revenue").textContent    = fmt$(revenue);
+  document.getElementById("r-costo-var").textContent  = fmt$(costoVar);
+  document.getElementById("r-costo-op").textContent   = fmt$(costoOp);
+  document.getElementById("r-neta").textContent       = fmt$(rentaNeta);
+  document.getElementById("r-neta").className         = "kpi-value " + (rentaNeta>=0?"verde":"rojo");
+  document.getElementById("r-margen-bruto").textContent = fmtPct(pctBruto);
+  document.getElementById("r-margen-neto").textContent  = fmtPct(pctNeto);
+  document.getElementById("r-margen-neto").className    = "kpi-value " + (pctNeto>=0?"verde":"rojo");
+
+  // Donut composición
+  drawDonut("chart-rent-stack",
+    ["Costo variable", "Costo operativo", "Rentabilidad"],
+    [Math.max(costoVar,0), Math.max(costoOp,0), Math.max(rentaNeta,0)],
+    ["#c0392b","#e67e22","#1a3a2c"]);
+
+  // Evolución mensual
+  const byMes = {};
+  data.forEach(d => {
+    const m = d.fecha.slice(0,7);
+    if (!byMes[m]) byMes[m] = {revenue:0, costo_var:0};
+    byMes[m].revenue   += d.revenue;
+    byMes[m].costo_var += d.costo_var;
+  });
+  // Agregar costos op por mes
+  Object.entries(costosOp).forEach(([fecha, cop]) => {
+    const m = fecha.slice(0,7);
+    if (byMes[m]) byMes[m].costo_op = (byMes[m].costo_op||0) + cop;
+  });
+  const meses = Object.keys(byMes).sort();
+  const rentMes = meses.map(m => {
+    const d = byMes[m];
+    return d.revenue - d.costo_var - (d.costo_op||0);
+  });
+  drawLine("chart-rent-evol", meses, rentMes, "Rentabilidad $", "#1a3a2c");
+}
+
+// ── MARGEN ────────────────────────────────────────────────────────────────────
+function renderMargen(data) {
+  // ── Margen unitario: usar TODOS los datos (sin filtro turno/empleada) ──
+  const unitByProd = {};
+  allData.forEach(d => {
+    if (d.precio_unit > 0) {
+      if (!unitByProd[d.nombre] || d.fecha > unitByProd[d.nombre].fecha) {
+        unitByProd[d.nombre] = {
+          fecha: d.fecha,
+          precio: parseNum(d.precio_unit),
+          costo:  parseNum(d.costo_var_unit),
+        };
+      }
+    }
+  });
+
+  // ── Margen agregado por producto ──
+  const byProd = {};
+  data.forEach(d => {
+    if (!byProd[d.nombre]) byProd[d.nombre] = { rev: 0, cv: 0 };
+    byProd[d.nombre].rev += d.revenue;
+    byProd[d.nombre].cv  += d.costo_var;
+  });
+
+  // ── Costo operativo promedio diario del período filtrado ──
+  // Costo operativo diario promedio del período
+  // (total del período ÷ días con datos → unidades por día)
+  const totalOpPeriodo = getFilteredCostosOp();
+  const diasConOp = Object.keys(costosOp).filter(fecha => {
+    const dummy = { fecha };
+    // Reusar la misma lógica de filtro de fecha
+    const p = period;
+    const pickerMes    = document.getElementById("picker-mes").value;
+    const pickerDia    = document.getElementById("picker-dia").value;
+    const pickerSemana = document.getElementById("picker-semana").value;
+    if (p === "mes"    && fecha.slice(0,7) !== pickerMes) return false;
+    if (p === "dia"    && fecha !== pickerDia) return false;
+    if (p === "semana") {
+      const dDate = new Date(fecha + "T12:00:00");
+      const yr = dDate.getFullYear(); const wk = getWeekNumber(dDate);
+      if (`${yr}-W${String(wk).padStart(2,"0")}` !== pickerSemana) return false;
+    }
+    return true;
+  }).length;
+  const factorTurno = filters.turno !== "todos" ? 0.5 : 1;
+  const costoOpDiario = (totalOpPeriodo / Math.max(diasConOp, 1)) * factorTurno;
+
+  const prodMargen = Object.entries(byProd)
+    .filter(([,v]) => v.rev > 0)
+    .map(([nombre, v]) => {
+      const u = unitByProd[nombre] || { precio: 0, costo: 0 };
+      const margenUnit = u.precio - u.costo;
+      const pct = u.precio > 0 ? margenUnit / u.precio : 0;
+      const pe = margenUnit > 0 ? Math.ceil(costoOpDiario / margenUnit) : "∞";
+      return { nombre, rev: v.rev, cv: v.cv,
+               precio: u.precio, costoUnit: u.costo,
+               margenUnit, pct, pe };
+    })
+    .sort((a,b) => b.pct - a.pct);
+
+  const avgPct = prodMargen.length
+    ? prodMargen.reduce((s,p) => s + p.pct, 0) / prodMargen.length : 0;
+
+  document.getElementById("m-avg").textContent   = fmtPct(avgPct);
+  document.getElementById("m-best").textContent  = prodMargen[0]
+    ? `${prodMargen[0].nombre} (${fmtPct(prodMargen[0].pct)})` : "—";
+  document.getElementById("m-worst").textContent = prodMargen.at(-1)
+    ? `${prodMargen.at(-1).nombre} (${fmtPct(prodMargen.at(-1).pct)})` : "—";
+  document.getElementById("m-count").textContent =
+    prodMargen.filter(p => p.pct > 0).length + " / " + prodMargen.length;
+
+  // Chart margen %
+  const colors = prodMargen.map(p => p.pct >= 0.5 ? "#1a3a2c" : p.pct >= 0.3 ? "#c47a00" : "#c0392b");
+  drawBarH("chart-margen-prod",
+    prodMargen.map(p => p.nombre),
+    prodMargen.map(p => Math.round(p.pct * 100)),
+    "Margen %", colors);
+
+  // Chart punto de equilibrio
+  const peSorted = [...prodMargen]
+    .filter(p => typeof p.pe === "number")
+    .sort((a,b) => a.pe - b.pe);
+  drawBar("chart-breakeven",
+    peSorted.map(p => p.nombre),
+    peSorted.map(p => p.pe),
+    "Unidades / turno", "#c47a00");
+
+  // Evolución mensual del margen %
+  const byMes = {};
+  data.forEach(d => {
+    const m = d.fecha.slice(0,7);
+    if (!byMes[m]) byMes[m] = { rev: 0, cv: 0 };
+    byMes[m].rev += d.revenue;
+    byMes[m].cv  += d.costo_var;
+  });
+  const meses = Object.keys(byMes).sort();
+  drawLine("chart-margen-evol", meses,
+    meses.map(m => {
+      const v = byMes[m];
+      return v.rev > 0 ? Math.round((v.rev - v.cv) / v.rev * 100) : 0;
+    }), "Margen bruto %", "#c47a00");
+
+  // Guardar para sort y renderizar
+  window._tablaMargenData = prodMargen.map(p => ({...p, co: costoOpDiario}));
+  window._tablaMargenSort = { col: 4, asc: false };
+  renderTablaMargen();
+}
+
+let _tablaMargenData = [], _tablaMargenSort = { col: 4, asc: false };
+
+function sortTabla(col) {
+  if (!window._tablaMargenData) return;
+  const s = window._tablaMargenSort;
+  s.asc = s.col === col ? !s.asc : false;
+  s.col = col;
+  window._tablaMargenSort = s;
+  renderTablaMargen();
+}
+
+function renderTablaMargen() {
+  const data = [...(window._tablaMargenData || [])];
+  const { col, asc } = window._tablaMargenSort || { col: 4, asc: false };
+
+  const getVal = (p, c) => {
+    const vals = [p.nombre, p.precio, p.costoUnit, p.margenUnit, p.pct,
+                  typeof p.pe === "number" ? p.pe : 9999, p.co];
+    return vals[c];
+  };
+
+  data.sort((a,b) => {
+    const va = getVal(a, col), vb = getVal(b, col);
+    if (typeof va === "string") return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return asc ? va - vb : vb - va;
+  });
+
+  document.getElementById("tabla-margen").innerHTML = data.map(p => {
+    const clr = p.pct >= 0.5 ? "#1a3a2c" : p.pct >= 0.3 ? "#c47a00" : "#c0392b";
+    return `<tr>
+      <td>${p.nombre}</td>
+      <td class="td-right">${fmt$(p.precio)}</td>
+      <td class="td-right">${fmt$(p.costoUnit)}</td>
+      <td class="td-right"><b>${fmt$(p.margenUnit)}</b></td>
+      <td class="td-right" style="font-weight:700;color:${clr}">${fmtPct(p.pct)}</td>
+      <td class="td-right" style="font-weight:700">${p.pe}</td>
+      <td class="td-right" style="color:var(--muted)">${fmt$(Math.round(p.co))}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+function drawBarH(id, labels, values, label, colors) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  charts[id] = new Chart(ctx, {
+    type: "bar",
+    data: { labels, datasets: [{ label, data: values,
+      backgroundColor: Array.isArray(colors) ? colors : colors + "cc",
+      borderWidth: 0, borderRadius: 4 }] },
+    options: {
+      indexAxis: "y",
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, callback: v => v + "%" }, max: 100 },
+        y: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function drawBar(id, labels, values, label, color) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  charts[id] = new Chart(ctx, {
+    type: "bar",
+    data: { labels, datasets: [{ label, data: values,
+      backgroundColor: color + "cc", borderColor: color, borderWidth: 1, borderRadius: 4 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 }, maxRotation: 40 } },
+                y: { ticks: { font: { size: 10 } } } } }
+  });
+}
+
+function drawLine(id, labels, values, label, color) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  charts[id] = new Chart(ctx, {
+    type: "line",
+    data: { labels, datasets: [{ label, data: values,
+      borderColor: color, backgroundColor: color+"22",
+      borderWidth: 2, pointRadius: 3, fill: true, tension: 0.3 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { x: { ticks: { font: { size: 10 }, maxRotation: 40 } },
+                y: { ticks: { font: { size: 10 } } } } }
+  });
+}
+
+function drawDonut(id, labels, values, colors) {
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  charts[id] = new Chart(ctx, {
+    type: "doughnut",
+    data: { labels, datasets: [{ data: values, backgroundColor: colors,
+            borderWidth: 2, borderColor: "#fff" }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom",
+        labels: { font: { size: 11 }, padding: 12 } } } }
+  });
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function showTab(t) {
+  const tabs = ["ventas","facturacion","rentabilidad","margen"];
+  document.querySelectorAll(".tab").forEach((el,i) =>
+    el.className = "tab" + (tabs[i]===t?" active":""));
+  tabs.forEach(tab =>
+    document.getElementById("tab-"+tab).className = "section"+(tab===t?" active":""));
+}
+
+// Listeners pickers
+document.getElementById("picker-mes").addEventListener("change", render);
+document.getElementById("picker-dia").addEventListener("change", render);
+document.getElementById("picker-semana").addEventListener("change", render);
+
+// Arrancar
+loadData();
+</script>
+</body>
+</html>
