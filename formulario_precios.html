@@ -555,7 +555,8 @@ async function agregarProducto() {
   const costo  = parseFloat(document.getElementById("np-costo").value) || 0;
   if (!nombre) { showToast("Ingresá el nombre", true); return; }
   if (!precio) { showToast("Ingresá el precio", true); return; }
-  console.log("tipoCosto:", tipoCosto, "recetaActual:", JSON.stringify(recetaActual));
+  showToast(`tipo: ${tipoCosto} | ingredientes: ${recetaActual.length}`, false);
+  await new Promise(r => setTimeout(r, 2000));
   if (tipoCosto === "receta" && recetaActual.length === 0) {
     showToast("Agregá al menos un ingrediente", true); return;
   }
