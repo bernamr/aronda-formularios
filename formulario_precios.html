@@ -257,9 +257,10 @@ document.getElementById("modal-fecha").value = new Date().toISOString().slice(0,
 async function cargarDatos() {
   try {
     // Cargar precios + catálogo de productos (para grupos y estado activo)
+    const t = Date.now();
     const [r1, r2] = await Promise.all([
-      fetch(APPS_SCRIPT_URL),
-      fetch(PRODUCTOS_SCRIPT_URL)
+      fetch(APPS_SCRIPT_URL + "?t=" + t),
+      fetch(PRODUCTOS_SCRIPT_URL + "?t=" + t)
     ]);
     const precios   = await r1.json();
     const catalogo  = await r2.json();
@@ -507,7 +508,7 @@ async function cargarInsumos() {
 
 async function cargarGestion() {
   try {
-    const res = await fetch(PRODUCTOS_SCRIPT_URL);
+    const res = await fetch(PRODUCTOS_SCRIPT_URL + "?t=" + Date.now());
     const d   = await res.json();
     todosProductos = d.productos || [];
     renderGestion();
