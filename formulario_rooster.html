@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Aronda — Rooster</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; padding-bottom: 60px; }
@@ -253,7 +254,10 @@ td input.sinasignar { background: #fafafa; color: #bbb; }
 
   <div id="resumen-semana"></div>
 
-  <button class="btn-save" onclick="guardarRoster()">Guardar roster</button>
+  <div style="display:flex;gap:10px;margin:0 16px">
+    <button class="btn-save" style="flex:2" onclick="guardarRoster()">Guardar roster</button>
+    <button class="btn-save" style="flex:1;background:#1a3a2c" onclick="compartirImagen()">📸 Compartir</button>
+  </div>
 </div>
 
 <!-- PAGOS -->
@@ -293,7 +297,7 @@ async function init() {
     if (cfg.año) cargarConfig(cfg);
     renderRoster();
     renderPagos();
-  } catch(e) {}
+  } catch(e) { loadConfigLocal(); }
 }
 
 function cargarConfig(cfg) {
@@ -337,6 +341,29 @@ function actualizarHoras() {
 ["cfg-m-ini","cfg-m-fin","cfg-t-ini","cfg-t-fin","cfg-dm-ini","cfg-dm-fin","cfg-dt-ini","cfg-dt-fin"].forEach(id =>
   document.getElementById(id).addEventListener("input", actualizarHoras));
 
+function saveConfigLocal() {
+  const cfg = {
+    año: document.getElementById("cfg-anio").value,
+    mes: document.getElementById("cfg-mes").value,
+    hora_inicio_manana: document.getElementById("cfg-m-ini").value,
+    hora_fin_manana:    document.getElementById("cfg-m-fin").value,
+    hora_inicio_tarde:  document.getElementById("cfg-t-ini").value,
+    hora_fin_tarde:     document.getElementById("cfg-t-fin").value,
+    hora_inicio_dom_m:  document.getElementById("cfg-dm-ini").value,
+    hora_fin_dom_m:     document.getElementById("cfg-dm-fin").value,
+    hora_inicio_dom_t:  document.getElementById("cfg-dt-ini").value,
+    hora_fin_dom_t:     document.getElementById("cfg-dt-fin").value,
+    precio_hora:    document.getElementById("cfg-precio").value,
+    precio_domingo: document.getElementById("cfg-domingo").value,
+  };
+  localStorage.setItem("aronda_rooster_config", JSON.stringify(cfg));
+}
+
+function loadConfigLocal() {
+  const saved = localStorage.getItem("aronda_rooster_config");
+  if (saved) cargarConfig(JSON.parse(saved));
+}
+
 async function guardarConfig() {
   const body = {
     action:"save_config",
@@ -357,6 +384,7 @@ async function guardarConfig() {
   extraNombre = document.getElementById("cfg-extra").value.trim();
   await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
     headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  saveConfigLocal();
   showToast("✅ Configuración guardada");
   actualizarHoras();
   renderRoster();
@@ -570,33 +598,38 @@ async function guardarRoster() {
   todosLosTurnos = todosLosTurnos.filter(t => !fechas.includes(t.fecha));
   turnos.forEach(t => { if(t.empleada !== "Sin asignar") todosLosTurnos.push(t); });
 
+  // Guardar offset de semana actual en localStorage
+  localStorage.setItem("aronda_rooster_semana", semanaOffset);
+
   showToast("✅ Roster guardado");
   generarPagosSemana(turnos);
 }
 
 function generarPagosSemana(turnos) {
-  const hM = +document.getElementById("cfg-m-fin").value - +document.getElementById("cfg-m-ini").value;
-  const hT = +document.getElementById("cfg-t-fin").value - +document.getElementById("cfg-t-ini").value;
+  const hM  = timeToHours(document.getElementById("cfg-m-fin").value)  - timeToHours(document.getElementById("cfg-m-ini").value);
+  const hT  = timeToHours(document.getElementById("cfg-t-fin").value)  - timeToHours(document.getElementById("cfg-t-ini").value);
+  const hDM = timeToHours(document.getElementById("cfg-dm-fin").value) - timeToHours(document.getElementById("cfg-dm-ini").value);
+  const hDT = timeToHours(document.getElementById("cfg-dt-fin").value) - timeToHours(document.getElementById("cfg-dt-ini").value);
   const pH = +document.getElementById("cfg-precio").value;
   const pD = +document.getElementById("cfg-domingo").value;
-  const extra = extraNombre || document.getElementById("cfg-extra").value.trim();
-  const emps = ["Lara","Nadia"];
-  if (extra) emps.push(extra);
 
   const stats = {};
-  emps.forEach(e => stats[e] = {hNorm:0, hDom:0});
 
   turnos.forEach(t => {
-    if (!stats[t.empleada]) return;
+    const emp = t.empleada;
+    if (!emp || emp === "Sin asignar" || emp === "Cerrado") return;
+    if (!stats[emp]) stats[emp] = {hNorm:0, hDom:0};
     const esDom = new Date(t.fecha+"T12:00:00").getDay() === 0;
-    const horas = t.turno === "manana" ? hM : hT;
-    if (esDom) stats[t.empleada].hDom += horas;
-    else stats[t.empleada].hNorm += horas;
+    const horasDefault = esDom
+      ? (t.turno==="manana" ? hDM : hDT)
+      : (t.turno==="manana" ? hM : hT);
+    const horas = t.horas_reales ? +t.horas_reales : horasDefault;
+    if (esDom) stats[emp].hDom += horas;
+    else stats[emp].hNorm += horas;
   });
 
-  const semanaInicio = turnos[0]?.fecha || "";
-  emps.forEach(async emp => {
-    const s = stats[emp];
+  const semanaInicio = [...new Set(turnos.map(t=>t.fecha))].sort()[0] || "";
+  Object.entries(stats).forEach(async ([emp, s]) => {
     if (s.hNorm + s.hDom === 0) return;
     const monto = s.hNorm * pH + s.hDom * pD;
     await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
@@ -669,6 +702,47 @@ function showTab(t) {
     document.getElementById("tab-"+tab).className = "section"+(tab===t?" active":""));
 }
 
+async function compartirImagen() {
+  showToast("Generando imagen...");
+
+  // Crear contenido limpio para capturar
+  const lunes = getLunes(semanaOffset);
+  const titulo = `☕ ARONDA — Roster ${fechaSemana()}`;
+
+  // Capturar solo la grilla + resumen
+  const target = document.getElementById("tab-roster");
+  const canvas = await html2canvas(target, {
+    backgroundColor: "#f5f0eb",
+    scale: 2,
+    useCORS: true,
+    ignoreElements: el => el.classList.contains("btn-save") || el.tagName === "BUTTON"
+  });
+
+  const img = canvas.toDataURL("image/png");
+
+  // Intentar Web Share API (mobile) o descargar
+  if (navigator.share && navigator.canShare) {
+    canvas.toBlob(async blob => {
+      const file = new File([blob], `roster-${lunes.toISOString().slice(0,10)}.png`, {type:"image/png"});
+      try {
+        await navigator.share({ files:[file], title: titulo });
+      } catch(e) {
+        descargarImagen(img, lunes);
+      }
+    });
+  } else {
+    descargarImagen(img, lunes);
+  }
+}
+
+function descargarImagen(dataUrl, lunes) {
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = `roster-${lunes.toISOString().slice(0,10)}.png`;
+  a.click();
+  showToast("✅ Imagen descargada");
+}
+
 function showToast(msg, isError=false) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -676,6 +750,10 @@ function showToast(msg, isError=false) {
   setTimeout(() => el.className = "toast"+(isError?" error":""), 3000);
 }
 
+// Cargar config y semana guardadas localmente
+loadConfigLocal();
+const savedSemana = localStorage.getItem("aronda_rooster_semana");
+if (savedSemana !== null) semanaOffset = +savedSemana;
 actualizarHoras();
 init();
 </script>
