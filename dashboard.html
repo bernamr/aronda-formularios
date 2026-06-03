@@ -464,6 +464,16 @@ function setFilter(key, val) {
   render();
 }
 
+function getFilteredDataSinPeriodo() {
+  return allData.filter(d => {
+    if (filters.turno    !== "todos" && d.turno   !== filters.turno)    return false;
+    if (filters.empleada !== "todos" && d.empleada !== filters.empleada) return false;
+    if (filters.producto !== "todos" && d.nombre  !== filters.producto) return false;
+    if (filters.grupo    !== "todos" && d.grupo   !== filters.grupo)    return false;
+    return true;
+  });
+}
+
 function getFilteredData() {
   const p = period;
   const pickerMes    = document.getElementById("picker-mes").value;
@@ -533,9 +543,9 @@ function render() {
   renderFacturacion(data);
   renderRentabilidad(data, costoOp);
   renderCostosOp();
-  // Actualizar KPIs de márgenes siempre; gráficos solo si el tab está visible
+  // Gráficos de márgenes solo si el tab está visible
   const margenTabVisible = document.getElementById("tab-detalle").classList.contains("active");
-  renderMargen(data, margenTabVisible);
+  renderMargen(getFilteredDataSinPeriodo(), margenTabVisible);
 }
 
 // ── VENTAS ───────────────────────────────────────────────────────────────────
@@ -630,9 +640,9 @@ function renderRentabilidad(data, costoOp) {
     [Math.max(costoVar,0), Math.max(costoOp,0), Math.max(rentaNeta,0)],
     ["#c0392b","#e67e22","#1a3a2c"]);
 
-  // Evolución mensual — usa TODOS los datos sin filtro de período
+  // Evolución mensual — sin filtro de período pero con turno/producto/grupo
   const byMesTodo = {};
-  allData.forEach(d => {
+  getFilteredDataSinPeriodo().forEach(d => {
     const m = d.fecha.slice(0,7);
     if (!byMesTodo[m]) byMesTodo[m] = {revenue:0, costo_var:0, costo_op:0};
     byMesTodo[m].revenue   += d.revenue;
@@ -727,9 +737,9 @@ function renderMargen(data, drawCharts = true) {
       prodMargen.map(p => Math.round(p.pct * 100)),
       "Margen %", colors);
 
-    // Evolución mensual del margen % — usa TODOS los datos sin filtro de período
+    // Evolución mensual del margen % — sin filtro de período pero con turno/producto/grupo
     const byMesTodo = {};
-    allData.forEach(d => {
+    getFilteredDataSinPeriodo().forEach(d => {
       const m = d.fecha.slice(0,7);
       if (!byMesTodo[m]) byMesTodo[m] = { rev: 0, cv: 0 };
       byMesTodo[m].rev += d.revenue;
@@ -1010,7 +1020,7 @@ function showTab(t) {
     document.getElementById("tab-"+tab).className = "section"+(tab===t?" active":""));
   // Re-renderizar gráficos cuando se muestra el tab (Chart.js no funciona en display:none)
   if (t === "detalle") {
-    renderMargen(getFilteredData(), true);
+    renderMargen(getFilteredDataSinPeriodo(), true);
     renderDetalle();
   }
 }
