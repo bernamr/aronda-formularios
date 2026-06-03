@@ -292,6 +292,7 @@ input[type=month], input[type=date], input[type=week] {
   <div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Margen bruto promedio</div><div class="kpi-value" id="m-avg">—</div></div>
     <div class="kpi"><div class="kpi-label">Mejor margen</div><div class="kpi-value verde" id="m-best" style="font-size:0.9rem">—</div></div>
+    <div class="kpi" style="grid-column:1/-1"><div class="kpi-label">☕ Café Medianos para break even / día</div><div class="kpi-value" id="m-be-cafe">—</div><div class="kpi-sub" id="m-be-cafe-sub"></div></div>
   </div>
   <div class="chart-card">
     <div class="chart-title">Margen % por producto</div>
@@ -546,6 +547,7 @@ function render() {
   // Gráficos de márgenes solo si el tab está visible
   const margenTabVisible = document.getElementById("tab-detalle").classList.contains("active");
   renderMargen(getFilteredDataSinPeriodo(), margenTabVisible);
+  if (margenTabVisible) renderDetalle();
 }
 
 // ── VENTAS ───────────────────────────────────────────────────────────────────
@@ -728,6 +730,18 @@ function renderMargen(data, drawCharts = true) {
   if (elAvg)  elAvg.textContent  = fmtPct(avgPct);
   if (elBest) elBest.textContent = prodMargen[0]
     ? `${prodMargen[0].nombre} (${fmtPct(prodMargen[0].pct)})` : "—";
+
+  // Break-even Café Mediano
+  const cafeMed = prodMargen.find(p => p.nombre === "Café Mediano");
+  const elBeCafe = document.getElementById("m-be-cafe");
+  const elBeCafeSub = document.getElementById("m-be-cafe-sub");
+  if (elBeCafe && cafeMed && cafeMed.margenUnit > 0) {
+    const be = Math.ceil(costoOpDiario / cafeMed.margenUnit);
+    elBeCafe.textContent = be + " u/día";
+    elBeCafeSub.textContent = `Precio $${cafeMed.precio.toLocaleString("es-AR")} · Costo var $${cafeMed.costoUnit.toLocaleString("es-AR")} · Margen $${cafeMed.margenUnit.toLocaleString("es-AR")} · Costo op diario $${Math.round(costoOpDiario).toLocaleString("es-AR")}`;
+  } else if (elBeCafe) {
+    elBeCafe.textContent = "—";
+  }
 
   if (drawCharts) {
     // Chart margen %
@@ -939,8 +953,8 @@ function renderDetalle() {
   const search = (document.getElementById("det-search")?.value || "").toLowerCase();
   const tbody  = document.getElementById("tabla-detalle");
 
-  // Usar TODOS los datos (sin filtro de período) — es un historial completo
-  const source = allData;
+  // Sin filtro de período pero respeta turno/producto/grupo
+  const source = getFilteredDataSinPeriodo();
 
   // Para cada producto, encontrar las combinaciones únicas de (precio_unit, costo_var_unit)
   // y el rango de fechas en que se vio cada una
