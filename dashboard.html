@@ -198,11 +198,21 @@ input[type=month], input[type=date], input[type=week] {
 
 <!-- COSTOS OPERATIVOS -->
 <div class="section" id="tab-costosop">
+  <div style="background:#fff;padding:10px 16px;border-bottom:1px solid #e0d6cc;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:#999;width:60px">Concepto</span>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="fbtn active" id="co-btn-todos"    onclick="setConceptoFilt('todos')">Todos</button>
+      <button class="fbtn" id="co-btn-sueldos"  onclick="setConceptoFilt('sueldos')">Sueldos</button>
+      <button class="fbtn" id="co-btn-luz"      onclick="setConceptoFilt('luz')">Luz</button>
+      <button class="fbtn" id="co-btn-cm"       onclick="setConceptoFilt('cm')">CM</button>
+      <button class="fbtn" id="co-btn-otro"     onclick="setConceptoFilt('otro')">Otro</button>
+    </div>
+  </div>
   <div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Total costos op</div><div class="kpi-value rojo" id="co-total">—</div></div>
     <div class="kpi"><div class="kpi-label">Promedio diario</div><div class="kpi-value" id="co-diario">—</div></div>
-    <div class="kpi"><div class="kpi-label">Mayor gasto</div><div class="kpi-value rojo" id="co-mayor" style="font-size:0.9rem">—</div></div>
-    <div class="kpi"><div class="kpi-label">Días cubiertos</div><div class="kpi-value" id="co-dias">—</div></div>
+    <div class="kpi"><div class="kpi-label">Mayor concepto</div><div class="kpi-value rojo" id="co-mayor" style="font-size:0.9rem">—</div></div>
+    <div class="kpi"><div class="kpi-label">Registros período</div><div class="kpi-value" id="co-dias">—</div></div>
   </div>
   <div class="chart-card">
     <div class="chart-title">Evolución mensual de costos operativos</div>
@@ -323,7 +333,7 @@ const URL_PRODUCTOS_API = "https://script.google.com/macros/s/AKfycby9AOVwJa2Ydc
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 let allData = [], costosOp = {}, costosOpRaw = [], charts = {};
-let period = "mes", filters = { turno: "todos", empleada: "todos", producto: "todos", grupo: "todos" };
+let period = "mes", filters = { turno: "todos", empleada: "todos", producto: "todos", grupo: "todos", concepto: "todos" };
 const now = new Date();
 
 // Inicializar pickers
@@ -422,6 +432,15 @@ function setPeriod(p) {
   document.getElementById("picker-mes").style.display    = p==="mes"    ? "" : "none";
   document.getElementById("picker-dia").style.display    = p==="dia"    ? "" : "none";
   document.getElementById("picker-semana").style.display = p==="semana" ? "" : "none";
+  render();
+}
+
+function setConceptoFilt(val) {
+  filters.concepto = val;
+  ["todos","sueldos","luz","cm","otro"].forEach(k => {
+    const btn = document.getElementById("co-btn-"+k);
+    if (btn) btn.className = "fbtn" + (k===val?" active":"");
+  });
   render();
 }
 
@@ -777,30 +796,36 @@ function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete chart
 
 // ── COSTOS OPERATIVOS ─────────────────────────────────────────────────────────
 function renderCostosOp() {
-  // Filtrar por período seleccionado
   const pickerMes = document.getElementById("picker-mes").value;
+  const pickerDia = document.getElementById("picker-dia").value;
   const p = period;
+  const conceptoFilt = filters.concepto || "todos";
 
+  // Filtrar por período Y por concepto
   const rawFiltrado = costosOpRaw.filter(r => {
-    if (p === "mes") return r.fecha && r.fecha.slice(0,7) === pickerMes;
-    if (p === "dia") return r.fecha === document.getElementById("picker-dia").value;
-    return true; // total o semana: mostrar todo
+    if (!r.fecha) return false;
+    if (p === "mes" && r.fecha.slice(0,7) !== pickerMes) return false;
+    if (p === "dia" && r.fecha !== pickerDia) return false;
+    if (conceptoFilt !== "todos" && (r.concepto||"").toLowerCase() !== conceptoFilt.toLowerCase()) return false;
+    return true;
   });
 
   const totalOp = rawFiltrado.reduce((s,r) => s + r.monto, 0);
-  const diasCon = new Set(Object.keys(costosOp)).size || 1;
-  const promDiario = Object.values(costosOp).reduce((s,v)=>s+v,0) / diasCon;
+
+  // Promedio diario del período filtrado
+  const diasPeriodo = new Set(rawFiltrado.map(r => r.fecha)).size || 1;
+  const promDiario = totalOp / diasPeriodo;
 
   // Concepto con mayor gasto
   const porConcepto = {};
-  rawFiltrado.forEach(r => porConcepto[r.concepto] = (porConcepto[r.concepto]||0) + r.monto);
+  rawFiltrado.forEach(r => porConcepto[r.concepto||"otro"] = (porConcepto[r.concepto||"otro"]||0) + r.monto);
   const conceptos = Object.entries(porConcepto).sort((a,b)=>b[1]-a[1]);
   const mayorConcepto = conceptos[0] ? `${conceptos[0][0]} (${fmt$(conceptos[0][1])})` : "—";
 
   document.getElementById("co-total").textContent   = fmt$(totalOp);
   document.getElementById("co-diario").textContent  = fmt$(Math.round(promDiario));
   document.getElementById("co-mayor").textContent   = mayorConcepto;
-  document.getElementById("co-dias").textContent    = Object.keys(costosOp).length;
+  document.getElementById("co-dias").textContent    = rawFiltrado.length;
 
   // Evolución mensual
   const byMes = {};
