@@ -572,7 +572,9 @@ async function agregarProducto() {
       action:"add", producto_id, nombre, grupo,
       tipo_costo: tipoCosto,
       costo_directo: tipoCosto === "directo" ? costo : "",
-      receta: tipoCosto === "receta" ? recetaActual : []
+      receta: tipoCosto === "receta" ? recetaActual : [],
+      precio_inicial: precio,
+      fecha_precio: hoy
     })
   });
 
@@ -585,12 +587,7 @@ async function agregarProducto() {
     });
   }
 
-  // 3. Registrar precio de venta en Aronda_Precios
-  await fetch(APPS_SCRIPT_URL, {
-    method:"POST", mode:"no-cors",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({tipo:"producto", id:producto_id, nuevo_precio:precio, fecha:hoy})
-  });
+  // El precio inicial se registra en el mismo request al Apps Script de Productos
 
   showToast("✅ " + nombre + " agregado (" + producto_id + ")");
 
