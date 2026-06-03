@@ -288,8 +288,12 @@ document.getElementById("hoy").textContent = new Date().toLocaleDateString("es-A
 async function init() {
   try {
     const data = await fetch(ROOSTER_URL).then(r=>r.json());
-    todosLosTurnos = data.turnos || [];
-    todosPagos = data.pagos || [];
+    todosLosTurnos = (data.turnos || []).map(t => ({
+      ...t, fecha: String(t.fecha).slice(0,10)
+    }));
+    todosPagos = (data.pagos || []).map(p => ({
+      ...p, semana_inicio: String(p.semana_inicio).slice(0,10)
+    }));
     // Cargar config del mes actual
     const ahora = new Date();
     const cfg = (data.config||[]).find(c => +c.año === ahora.getFullYear() && +c.mes === ahora.getMonth()+1)
