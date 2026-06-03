@@ -192,9 +192,8 @@ input[type=month], input[type=date], input[type=week] {
   <div class="tab active" onclick="showTab('ventas')">📦 Ventas</div>
   <div class="tab" onclick="showTab('facturacion')">💰 Facturación</div>
   <div class="tab" onclick="showTab('rentabilidad')">📈 Rentabilidad</div>
-  <div class="tab" onclick="showTab('margen')">🎯 Margen</div>
   <div class="tab" onclick="showTab('costosop')">📋 Costos Op</div>
-  <div class="tab" onclick="showTab('detalle')">🔍 Detalle</div>
+  <div class="tab" onclick="showTab('detalle')">🎯 Márgenes</div>
 </div>
 
 <!-- COSTOS OPERATIVOS -->
@@ -267,43 +266,6 @@ input[type=month], input[type=date], input[type=week] {
   </div>
 </div>
 
-<!-- MARGEN -->
-<div class="section" id="tab-margen">
-  <div class="kpi-grid">
-    <div class="kpi"><div class="kpi-label">Margen bruto promedio</div><div class="kpi-value" id="m-avg">—</div></div>
-    <div class="kpi"><div class="kpi-label">Mejor margen</div><div class="kpi-value verde" id="m-best" style="font-size:0.9rem">—</div></div>
-    <div class="kpi"><div class="kpi-label">Peor margen</div><div class="kpi-value rojo" id="m-worst" style="font-size:0.9rem">—</div></div>
-    <div class="kpi"><div class="kpi-label">Productos rentables</div><div class="kpi-value verde" id="m-count">—</div></div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Margen % por producto</div>
-    <div class="chart-wrap" style="height:260px"><canvas id="chart-margen-prod"></canvas></div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Evolución del margen % en el tiempo</div>
-    <div class="chart-wrap"><canvas id="chart-margen-evol"></canvas></div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Punto de equilibrio — unidades por día para cubrir costos operativos</div>
-    <div class="chart-wrap" style="height:260px"><canvas id="chart-breakeven"></canvas></div>
-  </div>
-  <div class="tabla-card">
-    <table>
-      <thead>
-        <tr>
-          <th onclick="sortTabla(0)">Producto ↕</th>
-          <th class="td-right" onclick="sortTabla(1)">Precio ↕</th>
-          <th class="td-right" onclick="sortTabla(2)">Costo var ↕</th>
-          <th class="td-right" onclick="sortTabla(3)">Margen unit. ↕</th>
-          <th class="td-right" onclick="sortTabla(4)">Margen % ↕</th>
-          <th class="td-right" onclick="sortTabla(5)">P.E. / día ↕</th>
-          <th class="td-right" onclick="sortTabla(6)">Costo op. diario ↕</th>
-        </tr>
-      </thead>
-      <tbody id="tabla-margen"></tbody>
-    </table>
-  </div>
-</div>
 
 <!-- RENTABILIDAD -->
 <div class="section" id="tab-rentabilidad">
@@ -325,8 +287,20 @@ input[type=month], input[type=date], input[type=week] {
   </div>
 </div>
 
-<!-- DETALLE MÁRGENES -->
+<!-- MÁRGENES -->
 <div class="section" id="tab-detalle">
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Margen bruto promedio</div><div class="kpi-value" id="m-avg">—</div></div>
+    <div class="kpi"><div class="kpi-label">Mejor margen</div><div class="kpi-value verde" id="m-best" style="font-size:0.9rem">—</div></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Margen % por producto</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="chart-margen-prod"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Evolución del margen % en el tiempo</div>
+    <div class="chart-wrap"><canvas id="chart-margen-evol"></canvas></div>
+  </div>
   <div style="background:#fff;padding:10px 16px;border-bottom:1px solid #e0d6cc;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:#999">Buscar producto</span>
     <input type="text" id="det-search" placeholder="Ej: Café Mediano…"
@@ -346,6 +320,7 @@ input[type=month], input[type=date], input[type=week] {
           <th class="td-right">Costo var</th>
           <th class="td-right">Margen $</th>
           <th class="td-right">Margen %</th>
+          <th class="td-right">P.E. / día</th>
         </tr>
       </thead>
       <tbody id="tabla-detalle"></tbody>
@@ -995,8 +970,17 @@ function renderDetalle() {
         const margen = c.precio - c.costo;
         const margenPct = c.precio ? margen / c.precio : 0;
         const esCurrent = c.hasta === arr[arr.length-1].hasta && arr.length > 1 ? false : (i === arr.length-1);
-        rows.push({ nombre, grupo, desde: c.desde, hasta: arr[i+1] ? arr[i+1].desde : "actual",
-          precio: c.precio, costo: c.costo, margen, margenPct, esCurrent: !arr[i+1] });
+        // Costo op diario promedio durante este período
+        const hastaFecha = arr[i+1] ? arr[i+1].desde : null;
+        const coEntries = Object.entries(costosOp).filter(([f]) =>
+          f >= c.desde && (!hastaFecha || f < hastaFecha));
+        const avgCoOp = coEntries.length
+          ? coEntries.reduce((s,[,v]) => s+v, 0) / coEntries.length
+          : Object.values(costosOp).reduce((s,v)=>s+v,0) / (Object.keys(costosOp).length||1);
+        const breakEven = margen > 0 ? Math.ceil(avgCoOp / margen) : null;
+
+        rows.push({ nombre, grupo, desde: c.desde, hasta: hastaFecha || "actual",
+          precio: c.precio, costo: c.costo, margen, margenPct, breakEven, esCurrent: !arr[i+1] });
       });
   });
 
@@ -1007,7 +991,7 @@ function renderDetalle() {
   rows.sort((a,b) => a.nombre.localeCompare(b.nombre) || a.desde.localeCompare(b.desde));
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
     return;
   }
 
@@ -1025,13 +1009,14 @@ function renderDetalle() {
       <td class="td-right">${fmt$(r.costo)}</td>
       <td class="td-right" style="font-weight:700">${fmt$(r.margen)}</td>
       <td class="td-right" style="font-weight:700;color:${mcColor}">${fmtPct(r.margenPct)}</td>
+      <td class="td-right" style="color:#555">${r.breakEven !== null ? r.breakEven + ' u/día' : '—'}</td>
     </tr>`;
   }).join("");
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 function showTab(t) {
-  const tabs = ["ventas","facturacion","rentabilidad","margen","costosop","detalle"];
+  const tabs = ["ventas","facturacion","rentabilidad","costosop","detalle"];
   document.querySelectorAll(".tab").forEach((el,i) =>
     el.className = "tab" + (tabs[i]===t?" active":""));
   tabs.forEach(tab =>
