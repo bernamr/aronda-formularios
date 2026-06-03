@@ -113,7 +113,6 @@ header span { font-size: 0.75rem; opacity: 0.6; }
 <div class="tabs">
   <div class="tab active" onclick="showTab('insumos')">🧾 Insumos</div>
   <div class="tab"        onclick="showTab('directos')">📦 Costos directos</div>
-  <div class="tab"        onclick="showTab('productos')">🏷️ Precios venta</div>
 </div>
 
 <div class="section active" id="tab-insumos">
@@ -221,7 +220,7 @@ function renderProductos(items) {
 
 // ── Tab ────────────────────────────────────────────────────────────────────────
 function showTab(t) {
-  const tabs = ["insumos","directos","productos"];
+  const tabs = ["insumos","directos"];
   document.querySelectorAll(".tab").forEach((el,i) =>
     el.className = "tab" + (tabs[i]===t ? " active" : ""));
   tabs.forEach(tab =>
