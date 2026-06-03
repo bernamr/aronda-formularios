@@ -533,6 +533,9 @@ function render() {
   renderFacturacion(data);
   renderRentabilidad(data, costoOp);
   renderCostosOp();
+  // Actualizar KPIs de márgenes siempre; gráficos solo si el tab está visible
+  const margenTabVisible = document.getElementById("tab-detalle").classList.contains("active");
+  renderMargen(data, margenTabVisible);
 }
 
 // ── VENTAS ───────────────────────────────────────────────────────────────────
@@ -649,7 +652,7 @@ function renderRentabilidad(data, costoOp) {
 }
 
 // ── MARGEN ────────────────────────────────────────────────────────────────────
-function renderMargen(data) {
+function renderMargen(data, drawCharts = true) {
   // ── Margen unitario: usar TODOS los datos (sin filtro turno/empleada) ──
   const unitByProd = {};
   allData.forEach(d => {
@@ -717,29 +720,29 @@ function renderMargen(data) {
   if (elBest) elBest.textContent = prodMargen[0]
     ? `${prodMargen[0].nombre} (${fmtPct(prodMargen[0].pct)})` : "—";
 
-  // Chart margen %
-  const colors = prodMargen.map(p => p.pct >= 0.5 ? "#1a3a2c" : p.pct >= 0.3 ? "#c47a00" : "#c0392b");
-  drawBarH("chart-margen-prod",
-    prodMargen.map(p => p.nombre),
-    prodMargen.map(p => Math.round(p.pct * 100)),
-    "Margen %", colors);
+  if (drawCharts) {
+    // Chart margen %
+    const colors = prodMargen.map(p => p.pct >= 0.5 ? "#1a3a2c" : p.pct >= 0.3 ? "#c47a00" : "#c0392b");
+    drawBarH("chart-margen-prod",
+      prodMargen.map(p => p.nombre),
+      prodMargen.map(p => Math.round(p.pct * 100)),
+      "Margen %", colors);
 
-
-  // Evolución mensual del margen %
-  const byMes = {};
-  data.forEach(d => {
-    const m = d.fecha.slice(0,7);
-    if (!byMes[m]) byMes[m] = { rev: 0, cv: 0 };
-    byMes[m].rev += d.revenue;
-    byMes[m].cv  += d.costo_var;
-  });
-  const meses = Object.keys(byMes).sort();
-  drawLine("chart-margen-evol", meses,
-    meses.map(m => {
-      const v = byMes[m];
-      return v.rev > 0 ? Math.round((v.rev - v.cv) / v.rev * 100) : 0;
-    }), "Margen bruto %", "#c47a00");
-
+    // Evolución mensual del margen %
+    const byMes = {};
+    data.forEach(d => {
+      const m = d.fecha.slice(0,7);
+      if (!byMes[m]) byMes[m] = { rev: 0, cv: 0 };
+      byMes[m].rev += d.revenue;
+      byMes[m].cv  += d.costo_var;
+    });
+    const meses = Object.keys(byMes).sort();
+    drawLine("chart-margen-evol", meses,
+      meses.map(m => {
+        const v = byMes[m];
+        return v.rev > 0 ? Math.round((v.rev - v.cv) / v.rev * 100) : 0;
+      }), "Margen bruto %", "#c47a00");
+  }
 }
 
 let _tablaMargenData = [], _tablaMargenSort = { col: 4, asc: false };
@@ -955,13 +958,13 @@ function renderDetalle() {
         const margen = c.precio - c.costo;
         const margenPct = c.precio ? margen / c.precio : 0;
         const esCurrent = c.hasta === arr[arr.length-1].hasta && arr.length > 1 ? false : (i === arr.length-1);
-        // Costo op diario promedio durante este período
+        // Break-even: unidades/día necesarias para cubrir costo op diario actual
+        // Fórmula: unidades * precio = unidades * costo_var + costo_op_diario
+        // => unidades = costo_op_diario / margen_unit
         const hastaFecha = arr[i+1] ? arr[i+1].desde : null;
-        const coEntries = Object.entries(costosOp).filter(([f]) =>
-          f >= c.desde && (!hastaFecha || f < hastaFecha));
-        const avgCoOp = coEntries.length
-          ? coEntries.reduce((s,[,v]) => s+v, 0) / coEntries.length
-          : Object.values(costosOp).reduce((s,v)=>s+v,0) / (Object.keys(costosOp).length||1);
+        const allCoValues = Object.values(costosOp);
+        const avgCoOp = allCoValues.length
+          ? allCoValues.reduce((s,v)=>s+v,0) / allCoValues.length : 0;
         const breakEven = margen > 0 ? Math.ceil(avgCoOp / margen) : null;
 
         rows.push({ nombre, grupo, desde: c.desde, hasta: hastaFecha || "actual",
@@ -1008,8 +1011,7 @@ function showTab(t) {
     document.getElementById("tab-"+tab).className = "section"+(tab===t?" active":""));
   // Re-renderizar gráficos cuando se muestra el tab (Chart.js no funciona en display:none)
   if (t === "detalle") {
-    const data = getFilteredData();
-    renderMargen(data);
+    renderMargen(getFilteredData(), true);
     renderDetalle();
   }
 }
