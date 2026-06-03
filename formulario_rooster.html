@@ -453,24 +453,42 @@ function renderRoster() {
       inp.addEventListener("change", () => colorInput(inp));
       colorInput(inp);
 
-      // Campo ajuste de horas (opcional, para modificar el turno)
+      // Ajuste horas empleada 1
       const ajuste = document.createElement("input");
-      ajuste.type = "number";
-      ajuste.className = "ajuste";
-      ajuste.step = "0.25";
-      ajuste.min = "0";
-      ajuste.placeholder = "hs reales";
-      ajuste.title = "Dejar vacío = horas del turno por defecto";
-      // Buscar si hay ajuste guardado
-      const tSaved = todosLosTurnos.find(x => x.fecha===fecha && x.turno===turno);
+      ajuste.type = "number"; ajuste.className = "ajuste";
+      ajuste.step = "0.25"; ajuste.min = "0"; ajuste.placeholder = "hs";
+      const tSaved  = todosLosTurnos.find(x => x.fecha===fecha && x.turno===turno && x.slot==="1");
+      const tSaved2 = todosLosTurnos.find(x => x.fecha===fecha && x.turno===turno && x.slot==="2");
       if (tSaved?.horas_reales) ajuste.value = tSaved.horas_reales;
-      ajuste.dataset.fecha = fecha;
-      ajuste.dataset.turno = turno;
+      ajuste.dataset.fecha = fecha; ajuste.dataset.turno = turno;
       ajuste.addEventListener("input", calcularResumen);
 
-      td.appendChild(dl);
-      td.appendChild(inp);
-      td.appendChild(ajuste);
+      // Empleada 2 (opcional)
+      const listId2 = `dl2-${fecha}-${turno}`;
+      const dl2 = document.createElement("datalist"); dl2.id = listId2;
+      sugerencias.forEach(s => { const op=document.createElement("option"); op.value=s; dl2.appendChild(op); });
+
+      const inp2 = document.createElement("input");
+      inp2.type = "text"; inp2.setAttribute("list", listId2);
+      inp2.value = tSaved2 ? (tSaved2.empleada==="Sin asignar" ? "" : tSaved2.empleada) : "";
+      inp2.placeholder = "+ otra";
+      inp2.style.cssText = "width:100%;padding:3px 6px;border:1px dashed #ddd;border-radius:6px;font-size:0.75rem;background:transparent;text-align:center;margin-top:3px";
+      inp2.dataset.fecha = fecha; inp2.dataset.turno = turno; inp2.dataset.dia = DIAS[i];
+      inp2.dataset.domingo = i===6?"1":"0"; inp2.dataset.slot = "2";
+      inp2.addEventListener("input", () => colorInput(inp2));
+      inp2.addEventListener("change", () => colorInput(inp2));
+
+      const ajuste2 = document.createElement("input");
+      ajuste2.type = "number"; ajuste2.className = "ajuste";
+      ajuste2.step = "0.25"; ajuste2.min = "0"; ajuste2.placeholder = "hs";
+      if (tSaved2?.horas_reales) ajuste2.value = tSaved2.horas_reales;
+      ajuste2.dataset.fecha = fecha; ajuste2.dataset.turno = turno;
+      ajuste2.addEventListener("input", calcularResumen);
+
+      inp.dataset.slot = "1";
+      td.appendChild(dl); td.appendChild(inp); td.appendChild(ajuste);
+      td.appendChild(document.createElement("hr")).style.cssText="border:none;border-top:1px dashed #eee;margin:3px 0";
+      td.appendChild(dl2); td.appendChild(inp2); td.appendChild(ajuste2);
       tr.appendChild(td);
     }
     body.appendChild(tr);
@@ -495,8 +513,9 @@ function calcularResumen() {
     if (!emp || emp === "Cerrado" || emp === "Sin asignar") return;
     if (!stats[emp]) stats[emp] = {hNorm:0, hDom:0};
     const esDom = inp.dataset.domingo === "1";
-    // Buscar ajuste de horas para esta celda
-    const ajusteEl = inp.parentElement.querySelector("input.ajuste");
+    const slot = inp.dataset.slot || "1";
+    const allAjustes = inp.parentElement.querySelectorAll("input.ajuste");
+    const ajusteEl = allAjustes[slot==="1" ? 0 : 1];
     const horasDefault = esDom
       ? (inp.dataset.turno==="manana" ? hDM : hDT)
       : (inp.dataset.turno==="manana" ? hM : hT);
@@ -528,13 +547,17 @@ function semanaSiguiente() { semanaOffset++; renderRoster(); }
 async function guardarRoster() {
   const turnos = [];
   document.querySelectorAll("#roster-body input[type=text]").forEach(inp => {
-    const ajusteEl = inp.parentElement.querySelector("input.ajuste");
+    const slot = inp.dataset.slot || "1";
+    // Encontrar el ajuste correspondiente a este slot
+    const allAjustes = inp.parentElement.querySelectorAll("input.ajuste");
+    const ajusteEl = allAjustes[slot==="1" ? 0 : 1];
     turnos.push({
-      fecha:       inp.dataset.fecha,
-      dia:         inp.dataset.dia,
-      turno:       inp.dataset.turno,
-      empleada:    inp.value.trim() || "Sin asignar",
-      horas_reales: ajusteEl?.value || ""
+      fecha:        inp.dataset.fecha,
+      dia:          inp.dataset.dia,
+      turno:        inp.dataset.turno,
+      empleada:     inp.value.trim() || "Sin asignar",
+      horas_reales: ajusteEl?.value || "",
+      slot:         slot
     });
   });
 
