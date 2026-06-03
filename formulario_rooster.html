@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Aronda — Rooster</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f0eb; padding-bottom: 60px; }
+
+header {
+  background: #2c1a0e; color: #f5e6d3;
+  padding: 14px 20px; position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between;
+}
+header h1 { font-size: 1rem; letter-spacing: 1px; }
+
+.tabs {
+  display: flex; background: #fff;
+  border-bottom: 2px solid #e0d6cc;
+  position: sticky; top: 49px; z-index: 19;
+}
+.tab {
+  flex: 1; padding: 12px 4px; text-align: center;
+  font-size: 0.78rem; font-weight: 700; cursor: pointer;
+  color: #999; border-bottom: 3px solid transparent;
+}
+.tab.active { color: #2c1a0e; border-bottom-color: #2c1a0e; }
+
+.section { display: none; padding: 0 0 20px; }
+.section.active { display: block; }
+
+.card {
+  background: #fff; margin: 12px 16px;
+  border-radius: 12px; padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+}
+.card-title { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: #999; margin-bottom: 12px; }
+
+label { font-size: 0.72rem; font-weight: 700; color: #666; text-transform: uppercase; display: block; margin-bottom: 4px; }
+input, select {
+  width: 100%; padding: 10px; border: 1.5px solid #ddd;
+  border-radius: 8px; font-size: 0.95rem; color: #333;
+  background: #fafafa; margin-bottom: 12px;
+}
+input:focus, select:focus { outline: none; border-color: #2c1a0e; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ROSTER GRID */
+.semana-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: #fff; border-bottom: 1px solid #e0d6cc;
+}
+.semana-nav button {
+  background: none; border: 2px solid #ddd; border-radius: 8px;
+  padding: 6px 14px; cursor: pointer; font-weight: 700; font-size: 0.85rem;
+}
+.semana-nav span { font-weight: 700; font-size: 0.95rem; }
+
+.roster-grid {
+  overflow-x: auto; padding: 12px 16px;
+}
+table { border-collapse: collapse; min-width: 100%; }
+th {
+  background: #2c1a0e; color: #f5e6d3;
+  padding: 8px 6px; font-size: 0.72rem; text-align: center;
+  white-space: nowrap;
+}
+td { padding: 4px; border: 1px solid #e0d6cc; }
+td.turno-label {
+  background: #f5f0eb; font-size: 0.78rem; font-weight: 700;
+  color: #2c1a0e; padding: 8px; white-space: nowrap;
+}
+td select {
+  width: 100%; padding: 6px; border: none; border-radius: 6px;
+  font-size: 0.82rem; background: #fafafa; margin: 0;
+}
+td select.lara    { background: #e8f5e9; }
+td select.nadia   { background: #e3f2fd; }
+td select.extra   { background: #fff3e0; }
+td select.cerrado { background: #f5f5f5; color: #aaa; }
+
+.resumen-empleada {
+  margin: 0 16px 8px; border-radius: 10px; padding: 12px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.resumen-empleada.lara  { background: #e8f5e9; }
+.resumen-empleada.nadia { background: #e3f2fd; }
+.resumen-empleada.extra { background: #fff3e0; }
+.emp-name { font-weight: 700; font-size: 0.9rem; }
+.emp-detail { font-size: 0.72rem; color: #666; margin-top: 2px; }
+.emp-monto { font-size: 1.1rem; font-weight: 800; color: #2c1a0e; }
+
+/* PAGOS */
+.pago-card {
+  background: #fff; margin: 8px 16px;
+  border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex; align-items: center; gap: 12px;
+}
+.pago-info { flex: 1; }
+.pago-nombre { font-weight: 700; font-size: 0.9rem; }
+.pago-detalle { font-size: 0.72rem; color: #888; margin-top: 2px; }
+.pago-monto { font-size: 1rem; font-weight: 800; color: #2c1a0e; margin-right: 10px; }
+.btn-pagar {
+  padding: 8px 14px; border: none; border-radius: 8px;
+  font-size: 0.8rem; font-weight: 700; cursor: pointer;
+}
+.btn-pagar.pendiente { background: #c0392b; color: #fff; }
+.btn-pagar.pagado    { background: #e8f5e9; color: #27ae60; border: 1.5px solid #27ae60; }
+
+.btn-save {
+  width: calc(100% - 32px); margin: 12px 16px;
+  padding: 14px; background: #2c1a0e; color: #fff;
+  border: none; border-radius: 12px; font-size: 1rem;
+  font-weight: 700; cursor: pointer;
+}
+
+.toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #2c1a0e; color: #fff;
+  padding: 12px 24px; border-radius: 30px;
+  font-weight: 700; transition: transform .3s; z-index: 200;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.error { background: #c0392b; }
+
+.extra-input {
+  display: none; margin-top: 6px; width: 100%;
+  padding: 8px; border: 1.5px solid #f4a03a;
+  border-radius: 8px; font-size: 0.85rem;
+}
+.extra-input.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📅 ARONDA — Rooster</h1>
+  <span id="hoy"></span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('config')">⚙️ Config</div>
+  <div class="tab" onclick="showTab('roster')">📋 Roster</div>
+  <div class="tab" onclick="showTab('pagos')">💰 Pagos</div>
+</div>
+
+<!-- CONFIG -->
+<div class="section active" id="tab-config">
+  <div class="card">
+    <div class="card-title">Mes configurado</div>
+    <div class="row2">
+      <div>
+        <label>Año</label>
+        <input type="number" id="cfg-anio" value="2026">
+      </div>
+      <div>
+        <label>Mes</label>
+        <select id="cfg-mes">
+          <option value="1">Enero</option><option value="2">Febrero</option>
+          <option value="3">Marzo</option><option value="4">Abril</option>
+          <option value="5">Mayo</option><option value="6" selected>Junio</option>
+          <option value="7">Julio</option><option value="8">Agosto</option>
+          <option value="9">Septiembre</option><option value="10">Octubre</option>
+          <option value="11">Noviembre</option><option value="12">Diciembre</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">☀️ Turno mañana</div>
+    <div class="row2">
+      <div><label>Desde (hs)</label><input type="number" id="cfg-m-ini" value="9" min="0" max="23"></div>
+      <div><label>Hasta (hs)</label><input type="number" id="cfg-m-fin" value="14" min="0" max="23"></div>
+    </div>
+    <div style="font-size:0.8rem;color:#888" id="horas-manana"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🌙 Turno tarde</div>
+    <div class="row2">
+      <div><label>Desde (hs)</label><input type="number" id="cfg-t-ini" value="15" min="0" max="23"></div>
+      <div><label>Hasta (hs)</label><input type="number" id="cfg-t-fin" value="20" min="0" max="23"></div>
+    </div>
+    <div style="font-size:0.8rem;color:#888" id="horas-tarde"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">💲 Precios</div>
+    <div class="row2">
+      <div><label>Precio / hora (normal)</label><input type="number" id="cfg-precio" value="4200" inputmode="numeric"></div>
+      <div><label>Precio / hora (domingo)</label><input type="number" id="cfg-domingo" value="7000" inputmode="numeric"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">👤 Empleada extra (opcional)</div>
+    <input type="text" id="cfg-extra" placeholder="Nombre empleada extra (ej: Ana)">
+  </div>
+
+  <button class="btn-save" onclick="guardarConfig()">Guardar configuración</button>
+</div>
+
+<!-- ROSTER -->
+<div class="section" id="tab-roster">
+  <div class="semana-nav">
+    <button onclick="semanaAnterior()">‹</button>
+    <span id="semana-label"></span>
+    <button onclick="semanaSiguiente()">›</button>
+  </div>
+
+  <div class="roster-grid">
+    <table id="tabla-roster">
+      <thead>
+        <tr>
+          <th>Turno</th>
+          <th id="th-0">Lun</th><th id="th-1">Mar</th><th id="th-2">Mié</th>
+          <th id="th-3">Jue</th><th id="th-4">Vie</th>
+          <th id="th-5" style="background:#1a3a2c">Sáb</th>
+          <th id="th-6" style="background:#8b0000">Dom</th>
+        </tr>
+      </thead>
+      <tbody id="roster-body"></tbody>
+    </table>
+  </div>
+
+  <div id="resumen-semana"></div>
+
+  <button class="btn-save" onclick="guardarRoster()">Guardar roster</button>
+</div>
+
+<!-- PAGOS -->
+<div class="section" id="tab-pagos">
+  <div style="padding:12px 16px 4px;font-size:0.65rem;font-weight:700;text-transform:uppercase;color:#999">
+    Pagos pendientes y recientes
+  </div>
+  <div id="lista-pagos"><div style="text-align:center;padding:30px;color:#aaa">Cargando...</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ROOSTER_URL = "https://script.google.com/macros/s/AKfycbwOCDvZWTQUKmdPTsYnMXoC5Q4gGHGMOAcn5MCazLneVUH4Oe78bXSo4-Ga6VVpzG6-pA/exec";
+
+const DIAS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+const DIAS_SHORT = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+
+let semanaOffset = 0;
+let config = {};
+let todosLosTurnos = [];
+let todosPagos = [];
+let extraNombre = "";
+
+document.getElementById("hoy").textContent = new Date().toLocaleDateString("es-AR");
+
+// ── Inicialización ─────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const data = await fetch(ROOSTER_URL).then(r=>r.json());
+    todosLosTurnos = data.turnos || [];
+    todosPagos = data.pagos || [];
+    // Cargar config del mes actual
+    const ahora = new Date();
+    const cfg = (data.config||[]).find(c => +c.año === ahora.getFullYear() && +c.mes === ahora.getMonth()+1)
+                || (data.config||[])[data.config.length-1] || {};
+    if (cfg.año) cargarConfig(cfg);
+    renderRoster();
+    renderPagos();
+  } catch(e) {}
+}
+
+function cargarConfig(cfg) {
+  document.getElementById("cfg-anio").value   = cfg.año || 2026;
+  document.getElementById("cfg-mes").value    = cfg.mes || 6;
+  document.getElementById("cfg-m-ini").value  = cfg.hora_inicio_manana || 9;
+  document.getElementById("cfg-m-fin").value  = cfg.hora_fin_manana || 14;
+  document.getElementById("cfg-t-ini").value  = cfg.hora_inicio_tarde || 15;
+  document.getElementById("cfg-t-fin").value  = cfg.hora_fin_tarde || 20;
+  document.getElementById("cfg-precio").value = cfg.precio_hora || 4200;
+  document.getElementById("cfg-domingo").value= cfg.precio_domingo || 7000;
+  config = cfg;
+  actualizarHoras();
+}
+
+// ── Config ─────────────────────────────────────────────────────────────────────
+function actualizarHoras() {
+  const mi = +document.getElementById("cfg-m-ini").value;
+  const mf = +document.getElementById("cfg-m-fin").value;
+  const ti = +document.getElementById("cfg-t-ini").value;
+  const tf = +document.getElementById("cfg-t-fin").value;
+  document.getElementById("horas-manana").textContent = `${mf-mi} horas (${mi}:00 a ${mf}:00)`;
+  document.getElementById("horas-tarde").textContent  = `${tf-ti} horas (${ti}:00 a ${tf}:00)`;
+}
+["cfg-m-ini","cfg-m-fin","cfg-t-ini","cfg-t-fin"].forEach(id =>
+  document.getElementById(id).addEventListener("input", actualizarHoras));
+
+async function guardarConfig() {
+  const body = {
+    action:"save_config",
+    año:    +document.getElementById("cfg-anio").value,
+    mes:    +document.getElementById("cfg-mes").value,
+    hora_inicio_manana: +document.getElementById("cfg-m-ini").value,
+    hora_fin_manana:    +document.getElementById("cfg-m-fin").value,
+    hora_inicio_tarde:  +document.getElementById("cfg-t-ini").value,
+    hora_fin_tarde:     +document.getElementById("cfg-t-fin").value,
+    precio_hora:    +document.getElementById("cfg-precio").value,
+    precio_domingo: +document.getElementById("cfg-domingo").value,
+  };
+  config = body;
+  extraNombre = document.getElementById("cfg-extra").value.trim();
+  await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
+    headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  showToast("✅ Configuración guardada");
+  actualizarHoras();
+  renderRoster();
+}
+
+// ── Roster ─────────────────────────────────────────────────────────────────────
+function getLunes(offset) {
+  const hoy = new Date();
+  const dia = hoy.getDay() || 7; // 1=lun, 7=dom
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() - dia + 1 + offset * 7);
+  lunes.setHours(0,0,0,0);
+  return lunes;
+}
+
+function fechaSemana() {
+  const lunes = getLunes(semanaOffset);
+  const domingo = new Date(lunes); domingo.setDate(lunes.getDate()+6);
+  return `${lunes.getDate()}/${lunes.getMonth()+1} — ${domingo.getDate()}/${domingo.getMonth()+1}`;
+}
+
+function fechaDia(lunes, offset) {
+  const d = new Date(lunes); d.setDate(lunes.getDate()+offset);
+  return d.toISOString().slice(0,10);
+}
+
+function esDomingo(lunes, dayIdx) {
+  return dayIdx === 6;
+}
+
+function getEmpleadaTurno(fecha, turno) {
+  const t = todosLosTurnos.find(x => x.fecha === fecha && x.turno === turno);
+  return t ? t.empleada : "Sin asignar";
+}
+
+function getOpciones(emp) {
+  const extra = extraNombre || document.getElementById("cfg-extra").value.trim();
+  const base = ["Sin asignar","Cerrado","Lara","Nadia"];
+  if (extra && !base.includes(extra)) base.push(extra);
+  return base;
+}
+
+function colorSelect(sel) {
+  const v = sel.value;
+  sel.className = v==="Lara"?"lara":v==="Nadia"?"nadia":v==="Cerrado"?"cerrado":
+    (v!=="Sin asignar"?"extra":"");
+  calcularResumen();
+}
+
+function renderRoster() {
+  document.getElementById("semana-label").textContent = fechaSemana();
+  const lunes = getLunes(semanaOffset);
+
+  // Headers con fechas
+  for (let i=0; i<7; i++) {
+    const th = document.getElementById("th-"+i);
+    const d = new Date(lunes); d.setDate(lunes.getDate()+i);
+    th.innerHTML = `${DIAS_SHORT[i]}<br><small>${d.getDate()}/${d.getMonth()+1}</small>`;
+  }
+
+  const body = document.getElementById("roster-body");
+  body.innerHTML = "";
+
+  ["manana","tarde"].forEach(turno => {
+    const tr = document.createElement("tr");
+    const tdLabel = document.createElement("td");
+    tdLabel.className = "turno-label";
+    tdLabel.textContent = turno === "manana" ? "☀️ Mañana" : "🌙 Tarde";
+    tr.appendChild(tdLabel);
+
+    for (let i=0; i<7; i++) {
+      const fecha = fechaDia(lunes, i);
+      const emp = getEmpleadaTurno(fecha, turno);
+      const td = document.createElement("td");
+      const sel = document.createElement("select");
+      sel.dataset.fecha = fecha;
+      sel.dataset.turno = turno;
+      sel.dataset.dia = DIAS[i];
+      sel.dataset.domingo = i===6 ? "1" : "0";
+
+      getOpciones().forEach(op => {
+        const opt = document.createElement("option");
+        opt.value = opt.textContent = op;
+        if (op === emp) opt.selected = true;
+        sel.appendChild(opt);
+      });
+
+      sel.addEventListener("change", () => colorSelect(sel));
+      colorSelect(sel);
+      td.appendChild(sel);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  });
+
+  calcularResumen();
+}
+
+function calcularResumen() {
+  const hM = +document.getElementById("cfg-m-fin").value - +document.getElementById("cfg-m-ini").value;
+  const hT = +document.getElementById("cfg-t-fin").value - +document.getElementById("cfg-t-ini").value;
+  const pH = +document.getElementById("cfg-precio").value;
+  const pD = +document.getElementById("cfg-domingo").value;
+  const extra = extraNombre || document.getElementById("cfg-extra").value.trim();
+
+  const emps = ["Lara","Nadia"];
+  if (extra) emps.push(extra);
+
+  const stats = {};
+  emps.forEach(e => stats[e] = {hNorm:0, hDom:0});
+
+  document.querySelectorAll("#roster-body select").forEach(sel => {
+    const emp = sel.value;
+    if (!stats[emp]) return;
+    const esDom = sel.dataset.domingo === "1";
+    const horas = sel.dataset.turno === "manana" ? hM : hT;
+    if (esDom) stats[emp].hDom += horas;
+    else stats[emp].hNorm += horas;
+  });
+
+  const div = document.getElementById("resumen-semana");
+  div.innerHTML = emps.map(emp => {
+    const s = stats[emp];
+    if (s.hNorm + s.hDom === 0) return "";
+    const monto = s.hNorm * pH + s.hDom * pD;
+    const cls = emp==="Lara"?"lara":emp==="Nadia"?"nadia":"extra";
+    return `<div class="resumen-empleada ${cls}">
+      <div>
+        <div class="emp-name">${emp}</div>
+        <div class="emp-detail">${s.hNorm}hs normales + ${s.hDom}hs domingo</div>
+      </div>
+      <div class="emp-monto">$${monto.toLocaleString("es-AR")}</div>
+    </div>`;
+  }).join("");
+}
+
+function semanaAnterior() { semanaOffset--; renderRoster(); }
+function semanaSiguiente() { semanaOffset++; renderRoster(); }
+
+async function guardarRoster() {
+  const turnos = [];
+  document.querySelectorAll("#roster-body select").forEach(sel => {
+    turnos.push({
+      fecha: sel.dataset.fecha,
+      dia:   sel.dataset.dia,
+      turno: sel.dataset.turno,
+      empleada: sel.value
+    });
+  });
+
+  await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"save_roster", turnos})});
+
+  // Actualizar cache local
+  const fechas = [...new Set(turnos.map(t=>t.fecha))];
+  todosLosTurnos = todosLosTurnos.filter(t => !fechas.includes(t.fecha));
+  turnos.forEach(t => { if(t.empleada !== "Sin asignar") todosLosTurnos.push(t); });
+
+  showToast("✅ Roster guardado");
+  generarPagosSemana(turnos);
+}
+
+function generarPagosSemana(turnos) {
+  const hM = +document.getElementById("cfg-m-fin").value - +document.getElementById("cfg-m-ini").value;
+  const hT = +document.getElementById("cfg-t-fin").value - +document.getElementById("cfg-t-ini").value;
+  const pH = +document.getElementById("cfg-precio").value;
+  const pD = +document.getElementById("cfg-domingo").value;
+  const extra = extraNombre || document.getElementById("cfg-extra").value.trim();
+  const emps = ["Lara","Nadia"];
+  if (extra) emps.push(extra);
+
+  const stats = {};
+  emps.forEach(e => stats[e] = {hNorm:0, hDom:0});
+
+  turnos.forEach(t => {
+    if (!stats[t.empleada]) return;
+    const esDom = new Date(t.fecha+"T12:00:00").getDay() === 0;
+    const horas = t.turno === "manana" ? hM : hT;
+    if (esDom) stats[t.empleada].hDom += horas;
+    else stats[t.empleada].hNorm += horas;
+  });
+
+  const semanaInicio = turnos[0]?.fecha || "";
+  emps.forEach(async emp => {
+    const s = stats[emp];
+    if (s.hNorm + s.hDom === 0) return;
+    const monto = s.hNorm * pH + s.hDom * pD;
+    await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        action:"save_pago",
+        semana_inicio: semanaInicio,
+        empleada: emp,
+        horas_normales: s.hNorm,
+        horas_domingo: s.hDom,
+        monto: monto,
+        estado: "pendiente",
+        fecha_pago: ""
+      })
+    });
+  });
+
+  setTimeout(() => renderPagos(), 2000);
+}
+
+// ── Pagos ──────────────────────────────────────────────────────────────────────
+function renderPagos() {
+  // Agrupar por semana + empleada, ordenar pendientes primero
+  const sorted = [...todosPagos].sort((a,b) => {
+    if (a.estado === b.estado) return b.semana_inicio > a.semana_inicio ? 1 : -1;
+    return a.estado === "pendiente" ? -1 : 1;
+  });
+
+  document.getElementById("lista-pagos").innerHTML = sorted.length ? sorted.map((p,i) => {
+    const isPend = p.estado !== "pagado";
+    return `<div class="pago-card">
+      <div class="pago-info">
+        <div class="pago-nombre">${p.empleada}</div>
+        <div class="pago-detalle">Semana del ${p.semana_inicio} · ${p.horas_normales}hs norm + ${p.horas_domingo}hs dom</div>
+      </div>
+      <span class="pago-monto">$${(+p.monto).toLocaleString("es-AR")}</span>
+      <button class="btn-pagar ${isPend?"pendiente":"pagado"}" onclick="togglePago(${i})">
+        ${isPend ? "Marcar pagado" : "✓ Pagado"}
+      </button>
+    </div>`;
+  }).join("") : '<div style="text-align:center;padding:30px;color:#aaa">Sin pagos registrados</div>';
+}
+
+async function togglePago(idx) {
+  const sorted = [...todosPagos].sort((a,b) => {
+    if (a.estado === b.estado) return b.semana_inicio > a.semana_inicio ? 1 : -1;
+    return a.estado === "pendiente" ? -1 : 1;
+  });
+  const p = sorted[idx];
+  p.estado = p.estado === "pagado" ? "pendiente" : "pagado";
+  p.fecha_pago = p.estado === "pagado" ? new Date().toISOString().slice(0,10) : "";
+
+  await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"save_pago", ...p})});
+
+  // Actualizar local
+  const orig = todosPagos.find(x => x.semana_inicio===p.semana_inicio && x.empleada===p.empleada);
+  if (orig) { orig.estado = p.estado; orig.fecha_pago = p.fecha_pago; }
+  renderPagos();
+  showToast(p.estado === "pagado" ? "✅ Marcado como pagado" : "Marcado como pendiente");
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function showTab(t) {
+  const tabs = ["config","roster","pagos"];
+  document.querySelectorAll(".tab").forEach((el,i) =>
+    el.className = "tab" + (tabs[i]===t?" active":""));
+  tabs.forEach(tab =>
+    document.getElementById("tab-"+tab).className = "section"+(tab===t?" active":""));
+}
+
+function showToast(msg, isError=false) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = "toast" + (isError?" error":"") + " show";
+  setTimeout(() => el.className = "toast"+(isError?" error":""), 3000);
+}
+
+actualizarHoras();
+init();
+</script>
+</body>
+</html>
