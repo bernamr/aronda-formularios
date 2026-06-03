@@ -271,7 +271,8 @@ td input.sinasignar { background: #fafafa; color: #bbb; }
 <div class="toast" id="toast"></div>
 
 <script>
-const ROOSTER_URL = "https://script.google.com/macros/s/AKfycbwOCDvZWTQUKmdPTsYnMXoC5Q4gGHGMOAcn5MCazLneVUH4Oe78bXSo4-Ga6VVpzG6-pA/exec";
+const ROOSTER_URL   = "https://script.google.com/macros/s/AKfycbwOCDvZWTQUKmdPTsYnMXoC5Q4gGHGMOAcn5MCazLneVUH4Oe78bXSo4-Ga6VVpzG6-pA/exec";
+const COSTOS_OP_URL = "https://script.google.com/macros/s/AKfycbwIrepJkdflWPkSm58jt_rO32rHawyTwLa29ffCvNQ0wk1XNYijNp7qRPbdgqApzR2W/exec";
 
 const DIAS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
 const DIAS_SHORT = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
@@ -710,11 +711,27 @@ async function togglePago(idx) {
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({action:"save_pago", ...p})});
 
+  // Si se marca como pagado → registrar en Costos Operativos
+  if (p.estado === "pagado") {
+    const hoy = new Date().toISOString().slice(0,10);
+    await fetch(COSTOS_OP_URL, {
+      method:"POST", mode:"no-cors",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        fecha:     hoy,
+        concepto:  "sueldos",
+        frecuencia:"semanal",
+        monto:     +p.monto,
+        comentario: `${p.empleada} — semana ${p.semana_inicio}`
+      })
+    });
+  }
+
   // Actualizar local
   const orig = todosPagos.find(x => x.semana_inicio===p.semana_inicio && x.empleada===p.empleada);
   if (orig) { orig.estado = p.estado; orig.fecha_pago = p.fecha_pago; }
   renderPagos();
-  showToast(p.estado === "pagado" ? "✅ Marcado como pagado" : "Marcado como pendiente");
+  showToast(p.estado === "pagado" ? "✅ Pagado + registrado en costos op" : "Marcado como pendiente");
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
