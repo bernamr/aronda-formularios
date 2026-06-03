@@ -272,7 +272,8 @@ async function cargarDatos() {
 
     const items = (precios.productos || []).map(i => ({
       ...i,
-      grupo: prodMap[i.producto_id]?.grupo || "Otros",
+      nombre: prodMap[i.producto_id]?.nombre || i.nombre || i.producto_id,
+      grupo:  prodMap[i.producto_id]?.grupo  || "Otros",
       activo: prodMap[i.producto_id]?.activo ?? 1
     })).filter(i => String(i.activo) === "1");
 
@@ -308,7 +309,7 @@ function renderProductos(items) {
         <div class="item">
           <div class="item-info">
             <div class="item-name">${i.nombre}</div>
-            <div class="item-meta">desde ${i.vigente_desde || '—'}</div>
+            <div class="item-meta">desde ${(i.vigente_desde||'').slice(0,10) || '—'}</div>
           </div>
           <span class="item-precio">${fmt(i.precio_actual)}</span>
           <button class="btn-update" data-pid="${i.producto_id}" data-nombre="${i.nombre}" data-precio="${i.precio_actual}" onclick="abrirModalBtn(this)">
