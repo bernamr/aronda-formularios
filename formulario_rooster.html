@@ -395,6 +395,17 @@ async function guardarConfig() {
 }
 
 // ── Roster ─────────────────────────────────────────────────────────────────────
+// Set de fechas marcadas como feriado
+let feriadosSet = new Set(JSON.parse(localStorage.getItem("aronda_feriados") || "[]"));
+
+function toggleFeriado(cb) {
+  const fecha = cb.dataset.fecha;
+  if (cb.checked) feriadosSet.add(fecha);
+  else feriadosSet.delete(fecha);
+  localStorage.setItem("aronda_feriados", JSON.stringify([...feriadosSet]));
+  calcularResumen();
+}
+
 function getLunes(offset) {
   const hoy = new Date();
   const dia = hoy.getDay() || 7; // 1=lun, 7=dom
@@ -419,9 +430,12 @@ function esDomingo(lunes, dayIdx) {
   return dayIdx === 6;
 }
 
-function getEmpleadaTurno(fecha, turno) {
-  const t = todosLosTurnos.find(x => x.fecha === fecha && x.turno === turno);
-  return t ? t.empleada : "Sin asignar";
+function getEmpleadaTurno(fecha, turno, slot="1") {
+  // Busca por slot si existe, si no toma el primero que coincida
+  const match = todosLosTurnos.filter(x => x.fecha === fecha && x.turno === turno);
+  if (!match.length) return "Sin asignar";
+  if (slot === "1") return (match.find(x => !x.slot || x.slot==="1") || match[0]).empleada;
+  return (match.find(x => x.slot==="2") || {}).empleada || "";
 }
 
 function getOpciones(emp) {
@@ -446,7 +460,12 @@ function renderRoster() {
   for (let i=0; i<7; i++) {
     const th = document.getElementById("th-"+i);
     const d = new Date(lunes); d.setDate(lunes.getDate()+i);
-    th.innerHTML = `${DIAS_SHORT[i]}<br><small>${d.getDate()}/${d.getMonth()+1}</small>`;
+    const fechaD = fechaDia(lunes, i);
+    const esFer = feriadosSet.has(fechaD);
+    th.innerHTML = `${DIAS_SHORT[i]}<br><small>${d.getDate()}/${d.getMonth()+1}</small>
+      <br><label style="font-size:0.65rem;cursor:pointer;font-weight:400;white-space:nowrap" title="Feriado - tarifa domingo">
+        <input type="checkbox" data-fecha="${fechaD}" onchange="toggleFeriado(this)" ${esFer?"checked":""}> 🏛️fer
+      </label>`;
   }
 
   const body = document.getElementById("roster-body");
@@ -461,7 +480,7 @@ function renderRoster() {
 
     for (let i=0; i<7; i++) {
       const fecha = fechaDia(lunes, i);
-      const emp = getEmpleadaTurno(fecha, turno);
+      const emp  = getEmpleadaTurno(fecha, turno, "1");
       const td = document.createElement("td");
       // Datalist para sugerencias
       const listId = `dl-${fecha}-${turno}`;
@@ -489,8 +508,9 @@ function renderRoster() {
       const ajuste = document.createElement("input");
       ajuste.type = "number"; ajuste.className = "ajuste";
       ajuste.step = "0.25"; ajuste.min = "0"; ajuste.placeholder = "hs";
-      const tSaved  = todosLosTurnos.find(x => x.fecha===fecha && x.turno===turno && x.slot==="1");
-      const tSaved2 = todosLosTurnos.find(x => x.fecha===fecha && x.turno===turno && x.slot==="2");
+      const allSlots = todosLosTurnos.filter(x => x.fecha===fecha && x.turno===turno);
+      const tSaved  = allSlots.find(x => !x.slot || x.slot==="1") || allSlots[0];
+      const tSaved2 = allSlots.find(x => x.slot==="2");
       if (tSaved?.horas_reales) ajuste.value = tSaved.horas_reales;
       ajuste.dataset.fecha = fecha; ajuste.dataset.turno = turno;
       ajuste.addEventListener("input", calcularResumen);
@@ -544,7 +564,7 @@ function calcularResumen() {
     const emp = inp.value.trim();
     if (!emp || emp === "Cerrado" || emp === "Sin asignar") return;
     if (!stats[emp]) stats[emp] = {hNorm:0, hDom:0};
-    const esDom = inp.dataset.domingo === "1";
+    const esDom = inp.dataset.domingo === "1" || feriadosSet.has(inp.dataset.fecha);
     const slot = inp.dataset.slot || "1";
     const allAjustes = inp.parentElement.querySelectorAll("input.ajuste");
     const ajusteEl = allAjustes[slot==="1" ? 0 : 1];
@@ -623,7 +643,7 @@ function generarPagosSemana(turnos) {
     const emp = t.empleada;
     if (!emp || emp === "Sin asignar" || emp === "Cerrado") return;
     if (!stats[emp]) stats[emp] = {hNorm:0, hDom:0};
-    const esDom = new Date(t.fecha+"T12:00:00").getDay() === 0;
+    const esDom = new Date(t.fecha+"T12:00:00").getDay() === 0 || feriadosSet.has(t.fecha);
     const horasDefault = esDom
       ? (t.turno==="manana" ? hDM : hDT)
       : (t.turno==="manana" ? hM : hT);
