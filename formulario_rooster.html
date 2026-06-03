@@ -76,6 +76,10 @@ td input[type=text] {
   font-size: 0.8rem; background: #fafafa; margin: 0;
   text-align: center; cursor: pointer;
 }
+td input[type=number].ajuste {
+  width: 100%; padding: 3px 4px; border: 1px dashed #ddd; border-radius: 4px;
+  font-size: 0.72rem; text-align: center; margin-top: 3px; color: #888; background: transparent;
+}
 td input.lara    { background: #e8f5e9; }
 td input.nadia   { background: #e3f2fd; }
 td input.extra   { background: #fff3e0; }
@@ -173,21 +177,39 @@ td input.sinasignar { background: #fafafa; color: #bbb; }
   </div>
 
   <div class="card">
-    <div class="card-title">☀️ Turno mañana</div>
+    <div class="card-title">☀️ Turno mañana (lun–sáb)</div>
     <div class="row2">
-      <div><label>Desde (hs)</label><input type="time" step="900" id="cfg-m-ini" value="9" min="0" max="23"></div>
-      <div><label>Hasta (hs)</label><input type="time" step="900"id="cfg-m-fin" value="14" min="0" max="23"></div>
+      <div><label>Desde</label><input type="time" id="cfg-m-ini" value="09:00" step="900"></div>
+      <div><label>Hasta</label><input type="time" id="cfg-m-fin" value="14:00" step="900"></div>
     </div>
     <div style="font-size:0.8rem;color:#888" id="horas-manana"></div>
   </div>
 
   <div class="card">
-    <div class="card-title">🌙 Turno tarde</div>
+    <div class="card-title">🌙 Turno tarde (lun–sáb)</div>
     <div class="row2">
-      <div><label>Desde (hs)</label><input type="time" step="900" id="cfg-t-ini" value="15" min="0" max="23"></div>
-      <div><label>Hasta (hs)</label><input type="time" step="900"id="cfg-t-fin" value="20" min="0" max="23"></div>
+      <div><label>Desde</label><input type="time" id="cfg-t-ini" value="15:00" step="900"></div>
+      <div><label>Hasta</label><input type="time" id="cfg-t-fin" value="20:00" step="900"></div>
     </div>
     <div style="font-size:0.8rem;color:#888" id="horas-tarde"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔴 Domingo — Turno mañana</div>
+    <div class="row2">
+      <div><label>Desde</label><input type="time" id="cfg-dm-ini" value="09:00" step="900"></div>
+      <div><label>Hasta</label><input type="time" id="cfg-dm-fin" value="14:00" step="900"></div>
+    </div>
+    <div style="font-size:0.8rem;color:#888" id="horas-dom-manana"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔴 Domingo — Turno tarde</div>
+    <div class="row2">
+      <div><label>Desde</label><input type="time" id="cfg-dt-ini" value="15:00" step="900"></div>
+      <div><label>Hasta</label><input type="time" id="cfg-dt-fin" value="20:00" step="900"></div>
+    </div>
+    <div style="font-size:0.8rem;color:#888" id="horas-dom-tarde"></div>
   </div>
 
   <div class="card">
@@ -275,28 +297,44 @@ async function init() {
 }
 
 function cargarConfig(cfg) {
-  document.getElementById("cfg-anio").value   = cfg.año || 2026;
-  document.getElementById("cfg-mes").value    = cfg.mes || 6;
-  document.getElementById("cfg-m-ini").value  = cfg.hora_inicio_manana || 9;
-  document.getElementById("cfg-m-fin").value  = cfg.hora_fin_manana || 14;
-  document.getElementById("cfg-t-ini").value  = cfg.hora_inicio_tarde || 15;
-  document.getElementById("cfg-t-fin").value  = cfg.hora_fin_tarde || 20;
-  document.getElementById("cfg-precio").value = cfg.precio_hora || 4200;
-  document.getElementById("cfg-domingo").value= cfg.precio_domingo || 7000;
+  document.getElementById("cfg-anio").value    = cfg.año || 2026;
+  document.getElementById("cfg-mes").value     = cfg.mes || 6;
+  document.getElementById("cfg-m-ini").value   = cfg.hora_inicio_manana  || "09:00";
+  document.getElementById("cfg-m-fin").value   = cfg.hora_fin_manana     || "14:00";
+  document.getElementById("cfg-t-ini").value   = cfg.hora_inicio_tarde   || "15:00";
+  document.getElementById("cfg-t-fin").value   = cfg.hora_fin_tarde      || "20:00";
+  document.getElementById("cfg-dm-ini").value  = cfg.hora_inicio_dom_m   || "09:00";
+  document.getElementById("cfg-dm-fin").value  = cfg.hora_fin_dom_m      || "14:00";
+  document.getElementById("cfg-dt-ini").value  = cfg.hora_inicio_dom_t   || "15:00";
+  document.getElementById("cfg-dt-fin").value  = cfg.hora_fin_dom_t      || "20:00";
+  document.getElementById("cfg-precio").value  = cfg.precio_hora || 4200;
+  document.getElementById("cfg-domingo").value = cfg.precio_domingo || 7000;
   config = cfg;
   actualizarHoras();
 }
 
 // ── Config ─────────────────────────────────────────────────────────────────────
-function actualizarHoras() {
-  const mi = +document.getElementById("cfg-m-ini").value;
-  const mf = +document.getElementById("cfg-m-fin").value;
-  const ti = +document.getElementById("cfg-t-ini").value;
-  const tf = +document.getElementById("cfg-t-fin").value;
-  document.getElementById("horas-manana").textContent = `${mf-mi} horas (${mi}:00 a ${mf}:00)`;
-  document.getElementById("horas-tarde").textContent  = `${tf-ti} horas (${ti}:00 a ${tf}:00)`;
+function timeToHours(t) {
+  if (!t) return 0;
+  const [h,m] = t.split(":").map(Number);
+  return h + m/60;
 }
-["cfg-m-ini","cfg-m-fin","cfg-t-ini","cfg-t-fin"].forEach(id =>
+
+function actualizarHoras() {
+  const ids = [
+    ["cfg-m-ini","cfg-m-fin","horas-manana","Mañana (lun-sáb)"],
+    ["cfg-t-ini","cfg-t-fin","horas-tarde","Tarde (lun-sáb)"],
+    ["cfg-dm-ini","cfg-dm-fin","horas-dom-manana","Mañana domingo"],
+    ["cfg-dt-ini","cfg-dt-fin","horas-dom-tarde","Tarde domingo"],
+  ];
+  ids.forEach(([ini,fin,div]) => {
+    const h = timeToHours(document.getElementById(fin).value) - timeToHours(document.getElementById(ini).value);
+    const ini_v = document.getElementById(ini).value;
+    const fin_v = document.getElementById(fin).value;
+    document.getElementById(div).textContent = `${h.toFixed(2).replace(".00","")} horas (${ini_v} a ${fin_v})`;
+  });
+}
+["cfg-m-ini","cfg-m-fin","cfg-t-ini","cfg-t-fin","cfg-dm-ini","cfg-dm-fin","cfg-dt-ini","cfg-dt-fin"].forEach(id =>
   document.getElementById(id).addEventListener("input", actualizarHoras));
 
 async function guardarConfig() {
@@ -304,10 +342,14 @@ async function guardarConfig() {
     action:"save_config",
     año:    +document.getElementById("cfg-anio").value,
     mes:    +document.getElementById("cfg-mes").value,
-    hora_inicio_manana: +document.getElementById("cfg-m-ini").value,
-    hora_fin_manana:    +document.getElementById("cfg-m-fin").value,
-    hora_inicio_tarde:  +document.getElementById("cfg-t-ini").value,
-    hora_fin_tarde:     +document.getElementById("cfg-t-fin").value,
+    hora_inicio_manana:  document.getElementById("cfg-m-ini").value,
+    hora_fin_manana:     document.getElementById("cfg-m-fin").value,
+    hora_inicio_tarde:   document.getElementById("cfg-t-ini").value,
+    hora_fin_tarde:      document.getElementById("cfg-t-fin").value,
+    hora_inicio_dom_m:   document.getElementById("cfg-dm-ini").value,
+    hora_fin_dom_m:      document.getElementById("cfg-dm-fin").value,
+    hora_inicio_dom_t:   document.getElementById("cfg-dt-ini").value,
+    hora_fin_dom_t:      document.getElementById("cfg-dt-fin").value,
     precio_hora:    +document.getElementById("cfg-precio").value,
     precio_domingo: +document.getElementById("cfg-domingo").value,
   };
@@ -410,8 +452,25 @@ function renderRoster() {
       inp.addEventListener("input", () => colorInput(inp));
       inp.addEventListener("change", () => colorInput(inp));
       colorInput(inp);
+
+      // Campo ajuste de horas (opcional, para modificar el turno)
+      const ajuste = document.createElement("input");
+      ajuste.type = "number";
+      ajuste.className = "ajuste";
+      ajuste.step = "0.25";
+      ajuste.min = "0";
+      ajuste.placeholder = "hs reales";
+      ajuste.title = "Dejar vacío = horas del turno por defecto";
+      // Buscar si hay ajuste guardado
+      const tSaved = todosLosTurnos.find(x => x.fecha===fecha && x.turno===turno);
+      if (tSaved?.horas_reales) ajuste.value = tSaved.horas_reales;
+      ajuste.dataset.fecha = fecha;
+      ajuste.dataset.turno = turno;
+      ajuste.addEventListener("input", calcularResumen);
+
       td.appendChild(dl);
       td.appendChild(inp);
+      td.appendChild(ajuste);
       tr.appendChild(td);
     }
     body.appendChild(tr);
@@ -421,8 +480,10 @@ function renderRoster() {
 }
 
 function calcularResumen() {
-  const hM = +document.getElementById("cfg-m-fin").value - +document.getElementById("cfg-m-ini").value;
-  const hT = +document.getElementById("cfg-t-fin").value - +document.getElementById("cfg-t-ini").value;
+  const hM  = timeToHours(document.getElementById("cfg-m-fin").value)  - timeToHours(document.getElementById("cfg-m-ini").value);
+  const hT  = timeToHours(document.getElementById("cfg-t-fin").value)  - timeToHours(document.getElementById("cfg-t-ini").value);
+  const hDM = timeToHours(document.getElementById("cfg-dm-fin").value) - timeToHours(document.getElementById("cfg-dm-ini").value);
+  const hDT = timeToHours(document.getElementById("cfg-dt-fin").value) - timeToHours(document.getElementById("cfg-dt-ini").value);
   const pH = +document.getElementById("cfg-precio").value;
   const pD = +document.getElementById("cfg-domingo").value;
   const extra = extraNombre || document.getElementById("cfg-extra").value.trim();
@@ -434,7 +495,12 @@ function calcularResumen() {
     if (!emp || emp === "Cerrado" || emp === "Sin asignar") return;
     if (!stats[emp]) stats[emp] = {hNorm:0, hDom:0};
     const esDom = inp.dataset.domingo === "1";
-    const horas = inp.dataset.turno === "manana" ? hM : hT;
+    // Buscar ajuste de horas para esta celda
+    const ajusteEl = inp.parentElement.querySelector("input.ajuste");
+    const horasDefault = esDom
+      ? (inp.dataset.turno==="manana" ? hDM : hDT)
+      : (inp.dataset.turno==="manana" ? hM : hT);
+    const horas = ajusteEl && ajusteEl.value ? +ajusteEl.value : horasDefault;
     if (esDom) stats[emp].hDom += horas;
     else stats[emp].hNorm += horas;
   });
@@ -462,11 +528,13 @@ function semanaSiguiente() { semanaOffset++; renderRoster(); }
 async function guardarRoster() {
   const turnos = [];
   document.querySelectorAll("#roster-body input[type=text]").forEach(inp => {
+    const ajusteEl = inp.parentElement.querySelector("input.ajuste");
     turnos.push({
-      fecha: inp.dataset.fecha,
-      dia:   inp.dataset.dia,
-      turno: inp.dataset.turno,
-      empleada: inp.value.trim() || "Sin asignar"
+      fecha:       inp.dataset.fecha,
+      dia:         inp.dataset.dia,
+      turno:       inp.dataset.turno,
+      empleada:    inp.value.trim() || "Sin asignar",
+      horas_reales: ajusteEl?.value || ""
     });
   });
 
