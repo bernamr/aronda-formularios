@@ -292,11 +292,17 @@ input[type=month], input[type=date], input[type=week] {
   <div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Margen bruto promedio</div><div class="kpi-value" id="m-avg">—</div></div>
     <div class="kpi"><div class="kpi-label">Mejor margen</div><div class="kpi-value verde" id="m-best" style="font-size:0.9rem">—</div></div>
+    <div class="kpi"><div class="kpi-label">Markup promedio</div><div class="kpi-value" id="m-markup">—</div></div>
+    <div class="kpi"><div class="kpi-label">Mejor markup</div><div class="kpi-value verde" id="m-markup-best" style="font-size:0.9rem">—</div></div>
     <div class="kpi" style="grid-column:1/-1"><div class="kpi-label">☕ Café Medianos para break even / día</div><div class="kpi-value" id="m-be-cafe">—</div><div class="kpi-sub" id="m-be-cafe-sub"></div></div>
   </div>
   <div class="chart-card">
     <div class="chart-title">Margen % por producto</div>
     <div class="chart-wrap" style="height:260px"><canvas id="chart-margen-prod"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Markup por producto (precio sobre costo)</div>
+    <div class="chart-wrap" style="height:260px"><canvas id="chart-markup-prod"></canvas></div>
   </div>
   <div class="chart-card">
     <div class="chart-title">Evolución del margen % en el tiempo</div>
@@ -321,6 +327,7 @@ input[type=month], input[type=date], input[type=week] {
           <th class="td-right">Costo var</th>
           <th class="td-right">Margen $</th>
           <th class="td-right">Margen %</th>
+          <th class="td-right">Markup</th>
           <th class="td-right">P.E. / día</th>
         </tr>
       </thead>
@@ -714,11 +721,12 @@ function renderMargen(data, drawCharts = true) {
     .map(([nombre, v]) => {
       const u = unitByProd[nombre] || { precio: 0, costo: 0 };
       const margenUnit = u.precio - u.costo;
-      const pct = u.precio > 0 ? margenUnit / u.precio : 0;
+      const pct    = u.precio > 0 ? margenUnit / u.precio : 0;
+      const markup = u.costo  > 0 ? margenUnit / u.costo  : 0;
       const pe = margenUnit > 0 ? Math.ceil(costoOpDiario / margenUnit) : "∞";
       return { nombre, rev: v.rev, cv: v.cv,
                precio: u.precio, costoUnit: u.costo,
-               margenUnit, pct, pe };
+               margenUnit, pct, markup, pe };
     })
     .sort((a,b) => b.pct - a.pct);
 
@@ -730,6 +738,15 @@ function renderMargen(data, drawCharts = true) {
   if (elAvg)  elAvg.textContent  = fmtPct(avgPct);
   if (elBest) elBest.textContent = prodMargen[0]
     ? `${prodMargen[0].nombre} (${fmtPct(prodMargen[0].pct)})` : "—";
+
+  const avgMarkup = prodMargen.length
+    ? prodMargen.reduce((s,p) => s + p.markup, 0) / prodMargen.length : 0;
+  const bestMarkup = [...prodMargen].sort((a,b) => b.markup - a.markup)[0];
+  const elMarkup     = document.getElementById("m-markup");
+  const elMarkupBest = document.getElementById("m-markup-best");
+  if (elMarkup)     elMarkup.textContent     = fmtPct(avgMarkup);
+  if (elMarkupBest) elMarkupBest.textContent = bestMarkup
+    ? `${bestMarkup.nombre} (${fmtPct(bestMarkup.markup)})` : "—";
 
   // Break-even Café Mediano
   const cafeMed = prodMargen.find(p => p.nombre === "Café Mediano");
@@ -750,6 +767,14 @@ function renderMargen(data, drawCharts = true) {
       prodMargen.map(p => p.nombre),
       prodMargen.map(p => Math.round(p.pct * 100)),
       "Margen %", colors);
+
+    // Chart markup por producto
+    const markupSorted = [...prodMargen].sort((a,b) => b.markup - a.markup);
+    const markupColors = markupSorted.map(p => p.markup >= 1.5 ? "#1a3a2c" : p.markup >= 1 ? "#c47a00" : "#c0392b");
+    drawBarH("chart-markup-prod",
+      markupSorted.map(p => p.nombre),
+      markupSorted.map(p => Math.round(p.markup * 100)),
+      "Markup %", markupColors);
 
     // Evolución mensual del margen % — sin filtro de período pero con turno/producto/grupo
     const byMesTodo = {};
@@ -990,8 +1015,9 @@ function renderDetalle() {
           ? allCoValues.reduce((s,v)=>s+v,0) / allCoValues.length : 0;
         const breakEven = margen > 0 ? Math.ceil(avgCoOp / margen) : null;
 
+        const markup = c.costo > 0 ? margen / c.costo : 0;
         rows.push({ nombre, grupo, desde: c.desde, hasta: hastaFecha || "actual",
-          precio: c.precio, costo: c.costo, margen, margenPct, breakEven, esCurrent: !arr[i+1] });
+          precio: c.precio, costo: c.costo, margen, margenPct, markup, breakEven, esCurrent: !arr[i+1] });
       });
   });
 
@@ -1002,7 +1028,7 @@ function renderDetalle() {
   rows.sort((a,b) => a.nombre.localeCompare(b.nombre) || a.desde.localeCompare(b.desde));
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
     return;
   }
 
@@ -1020,6 +1046,7 @@ function renderDetalle() {
       <td class="td-right">${fmt$(r.costo)}</td>
       <td class="td-right" style="font-weight:700">${fmt$(r.margen)}</td>
       <td class="td-right" style="font-weight:700;color:${mcColor}">${fmtPct(r.margenPct)}</td>
+      <td class="td-right" style="font-weight:700;color:${r.markup>=1.5?'#1a3a2c':r.markup>=1?'#c47a00':'#c0392b'}">${fmtPct(r.markup)}</td>
       <td class="td-right" style="color:#555">${r.breakEven !== null ? r.breakEven + ' u/día' : '—'}</td>
     </tr>`;
   }).join("");
