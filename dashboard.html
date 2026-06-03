@@ -950,9 +950,9 @@ function renderDetalle() {
   const prodMap = {}; // nombre → {grupo, combos: Map<"precio|costo", {desde, hasta}>}
 
   source.forEach(d => {
-    if (!d.nombre || !d.precio_unit) return;
+    if (!d.nombre) return;
     if (!prodMap[d.nombre]) prodMap[d.nombre] = { grupo: d.grupo, combos: {} };
-    const key = `${d.precio_unit}|${d.costo_var_unit}`;
+    const key = `${d.precio_unit||0}|${d.costo_var_unit||0}`;
     const combo = prodMap[d.nombre].combos;
     if (!combo[key]) combo[key] = { precio: d.precio_unit, costo: d.costo_var_unit, desde: d.fecha, hasta: d.fecha };
     else {
@@ -1021,6 +1021,12 @@ function showTab(t) {
     el.className = "tab" + (tabs[i]===t?" active":""));
   tabs.forEach(tab =>
     document.getElementById("tab-"+tab).className = "section"+(tab===t?" active":""));
+  // Re-renderizar gráficos cuando se muestra el tab (Chart.js no funciona en display:none)
+  if (t === "detalle") {
+    const data = getFilteredData();
+    renderMargen(data);
+    renderDetalle();
+  }
 }
 
 // Listeners pickers
