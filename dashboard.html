@@ -325,22 +325,29 @@ input[type=month], input[type=date], input[type=week] {
   </div>
 </div>
 
-<!-- DETALLE -->
+<!-- DETALLE MÁRGENES -->
 <div class="section" id="tab-detalle">
   <div style="background:#fff;padding:10px 16px;border-bottom:1px solid #e0d6cc;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:#999">Agrupar por</span>
-    <div style="display:flex;gap:4px;flex-wrap:wrap">
-      <button class="fbtn active" id="det-btn-prod"  onclick="setDetalleAgrup('producto')">Producto</button>
-      <button class="fbtn"        id="det-btn-fecha" onclick="setDetalleAgrup('fecha')">Fecha</button>
-      <button class="fbtn"        id="det-btn-ambos" onclick="setDetalleAgrup('ambos')">Fecha × Producto</button>
-    </div>
-    <input type="text" id="det-search" placeholder="Buscar…"
-      style="margin-left:auto;padding:5px 10px;border:1.5px solid #e0d6cc;border-radius:20px;font-size:0.78rem;width:140px"
-      oninput="renderDetalle(getFilteredData())">
+    <span style="font-size:0.65rem;font-weight:700;text-transform:uppercase;color:#999">Buscar producto</span>
+    <input type="text" id="det-search" placeholder="Ej: Café Mediano…"
+      style="padding:5px 10px;border:1.5px solid #e0d6cc;border-radius:20px;font-size:0.78rem;width:160px"
+      oninput="renderDetalle()">
   </div>
-  <div class="tabla-card" style="margin-top:14px">
-    <table id="tabla-detalle-el">
-      <thead id="det-thead"></thead>
+  <p style="padding:10px 16px 0;font-size:0.72rem;color:#888">Muestra cada combinación única de precio/costo por producto. Una fila nueva aparece cuando cambia el precio o el costo.</p>
+  <div class="tabla-card" style="margin-top:10px">
+    <table>
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Grupo</th>
+          <th>Desde</th>
+          <th>Hasta</th>
+          <th class="td-right">Precio</th>
+          <th class="td-right">Costo var</th>
+          <th class="td-right">Margen $</th>
+          <th class="td-right">Margen %</th>
+        </tr>
+      </thead>
       <tbody id="tabla-detalle"></tbody>
     </table>
   </div>
@@ -955,106 +962,71 @@ function drawDonut(id, labels, values, colors) {
   });
 }
 
-// ── DETALLE ───────────────────────────────────────────────────────────────────
-let detalleAgrup = "producto";
-let detalleSortCol = -1, detalleSortAsc = true;
-
-function setDetalleAgrup(v) {
-  detalleAgrup = v;
-  ["prod","fecha","ambos"].forEach(k => {
-    const btn = document.getElementById("det-btn-"+k);
-    if (btn) btn.className = "fbtn" + (
-      (k==="prod"&&v==="producto")||(k==="fecha"&&v==="fecha")||(k==="ambos"&&v==="ambos")
-      ? " active" : "");
-  });
-  detalleSortCol = -1;
-  renderDetalle(getFilteredData());
-}
-
-function renderDetalle(data) {
+// ── DETALLE MÁRGENES (historial de cambios precio/costo) ──────────────────────
+function renderDetalle() {
   const search = (document.getElementById("det-search")?.value || "").toLowerCase();
+  const tbody  = document.getElementById("tabla-detalle");
 
-  // Agrupar
-  const map = {};
-  data.forEach(d => {
-    const key = detalleAgrup === "producto" ? d.nombre
-              : detalleAgrup === "fecha"    ? d.fecha
-              : d.fecha + "||" + d.nombre;
-    if (!map[key]) map[key] = { fecha: d.fecha, nombre: d.nombre, cantidad: 0,
-      revenue: 0, costo_var: 0, margen_bruto: 0,
-      precio_sum: 0, costo_sum: 0, cnt: 0 };
-    map[key].cantidad    += d.cantidad;
-    map[key].revenue     += d.revenue;
-    map[key].costo_var   += d.costo_var;
-    map[key].margen_bruto+= d.margen_bruto;
-    map[key].precio_sum  += d.precio_unit * d.cantidad;
-    map[key].costo_sum   += d.costo_var_unit * d.cantidad;
-    map[key].cnt         += d.cantidad;
+  // Usar TODOS los datos (sin filtro de período) — es un historial completo
+  const source = allData;
+
+  // Para cada producto, encontrar las combinaciones únicas de (precio_unit, costo_var_unit)
+  // y el rango de fechas en que se vio cada una
+  const prodMap = {}; // nombre → {grupo, combos: Map<"precio|costo", {desde, hasta}>}
+
+  source.forEach(d => {
+    if (!d.nombre || !d.precio_unit) return;
+    if (!prodMap[d.nombre]) prodMap[d.nombre] = { grupo: d.grupo, combos: {} };
+    const key = `${d.precio_unit}|${d.costo_var_unit}`;
+    const combo = prodMap[d.nombre].combos;
+    if (!combo[key]) combo[key] = { precio: d.precio_unit, costo: d.costo_var_unit, desde: d.fecha, hasta: d.fecha };
+    else {
+      if (d.fecha < combo[key].desde) combo[key].desde = d.fecha;
+      if (d.fecha > combo[key].hasta) combo[key].hasta = d.fecha;
+    }
   });
 
-  let rows = Object.entries(map).map(([k, v]) => ({
-    key: k,
-    fecha:    detalleAgrup === "fecha" ? k : (detalleAgrup === "producto" ? "—" : k.split("||")[0]),
-    nombre:   detalleAgrup === "fecha" ? "—" : (detalleAgrup === "producto" ? k : k.split("||")[1]),
-    cantidad: v.cantidad,
-    precio_unit:    v.cnt ? Math.round(v.precio_sum / v.cnt) : 0,
-    costo_var_unit: v.cnt ? Math.round(v.costo_sum / v.cnt) : 0,
-    margen_unit:    v.cnt ? Math.round((v.margen_bruto) / v.cnt) : 0,
-    margen_pct:     v.revenue ? v.margen_bruto / v.revenue : 0,
-    revenue:        v.revenue,
-    margen_bruto:   v.margen_bruto,
-  }));
+  // Aplanar en filas, ordenar por producto + desde
+  let rows = [];
+  Object.entries(prodMap).forEach(([nombre, {grupo, combos}]) => {
+    Object.values(combos)
+      .sort((a,b) => a.desde.localeCompare(b.desde))
+      .forEach((c, i, arr) => {
+        const margen = c.precio - c.costo;
+        const margenPct = c.precio ? margen / c.precio : 0;
+        const esCurrent = c.hasta === arr[arr.length-1].hasta && arr.length > 1 ? false : (i === arr.length-1);
+        rows.push({ nombre, grupo, desde: c.desde, hasta: arr[i+1] ? arr[i+1].desde : "actual",
+          precio: c.precio, costo: c.costo, margen, margenPct, esCurrent: !arr[i+1] });
+      });
+  });
 
-  // Filtro de búsqueda
-  if (search) rows = rows.filter(r =>
-    r.nombre.toLowerCase().includes(search) || r.fecha.includes(search));
+  // Filtro búsqueda
+  if (search) rows = rows.filter(r => r.nombre.toLowerCase().includes(search));
 
-  // Ordenar
-  const cols = ["fecha","nombre","cantidad","precio_unit","costo_var_unit","margen_unit","margen_pct","revenue","margen_bruto"];
-  if (detalleSortCol >= 0) {
-    const col = cols[detalleSortCol];
-    rows.sort((a,b) => {
-      const av = a[col], bv = b[col];
-      const cmp = typeof av === "string" ? av.localeCompare(bv) : av - bv;
-      return detalleSortAsc ? cmp : -cmp;
-    });
+  // Ordenar por nombre luego fecha
+  rows.sort((a,b) => a.nombre.localeCompare(b.nombre) || a.desde.localeCompare(b.desde));
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
+    return;
   }
 
-  // Header
-  const thead = document.getElementById("det-thead");
-  const colDefs = [
-    {label:"Fecha",col:"fecha"}, {label:"Producto",col:"nombre"}, {label:"Uds",col:"cantidad"},
-    {label:"Precio unit",col:"precio_unit"}, {label:"Costo var unit",col:"costo_var_unit"},
-    {label:"Margen unit",col:"margen_unit"}, {label:"Margen %",col:"margen_pct"},
-    {label:"Revenue",col:"revenue"}, {label:"Margen total",col:"margen_bruto"}
-  ];
-  thead.innerHTML = "<tr>" + colDefs.map((c,i) =>
-    `<th class="${i>=2?"td-right":""}" onclick="detSort(${i})">${c.label} ↕</th>`
-  ).join("") + "</tr>";
-
-  // Body
-  const tbody = document.getElementById("tabla-detalle");
-  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>'; return; }
+  let lastNombre = null;
   tbody.innerHTML = rows.map(r => {
-    const mc = r.margen_pct >= 0.5 ? "verde" : r.margen_pct >= 0.3 ? "" : "rojo";
-    return `<tr>
-      <td>${r.fecha}</td>
-      <td>${r.nombre}</td>
-      <td class="td-right">${r.cantidad}</td>
-      <td class="td-right">${fmt$(r.precio_unit)}</td>
-      <td class="td-right">${fmt$(r.costo_var_unit)}</td>
-      <td class="td-right">${fmt$(r.margen_unit)}</td>
-      <td class="td-right" style="font-weight:700" class="${mc}">${fmtPct(r.margen_pct)}</td>
-      <td class="td-right">${fmt$(r.revenue)}</td>
-      <td class="td-right">${fmt$(r.margen_bruto)}</td>
+    const isNew = r.nombre !== lastNombre;
+    lastNombre = r.nombre;
+    const mcColor = r.margenPct >= 0.5 ? "#1a3a2c" : r.margenPct >= 0.3 ? "#c47a00" : "#c0392b";
+    return `<tr style="${isNew && rows.indexOf(r) > 0 ? 'border-top:2px solid #e0d6cc' : ''}">
+      <td style="font-weight:${isNew?'700':'400'};color:${isNew?'var(--cafe)':'#555'}">${isNew ? r.nombre : ''}</td>
+      <td style="color:#888;font-size:0.75rem">${isNew ? r.grupo : ''}</td>
+      <td>${r.desde}</td>
+      <td style="color:${r.hasta==='actual'?'var(--verde)':'#888'};font-weight:${r.hasta==='actual'?'700':'400'}">${r.hasta}</td>
+      <td class="td-right">${fmt$(r.precio)}</td>
+      <td class="td-right">${fmt$(r.costo)}</td>
+      <td class="td-right" style="font-weight:700">${fmt$(r.margen)}</td>
+      <td class="td-right" style="font-weight:700;color:${mcColor}">${fmtPct(r.margenPct)}</td>
     </tr>`;
   }).join("");
-}
-
-function detSort(i) {
-  if (detalleSortCol === i) detalleSortAsc = !detalleSortAsc;
-  else { detalleSortCol = i; detalleSortAsc = true; }
-  renderDetalle(getFilteredData());
 }
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
