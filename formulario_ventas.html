@@ -193,6 +193,35 @@
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
   .toast.error { background: #c0392b; }
+
+  .overlay-estado {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    text-align: center;
+    padding: 40px;
+  }
+  .overlay-estado.show { display: flex; }
+  .overlay-estado.procesando { background: rgba(44,26,14,0.93); }
+  .overlay-estado.ok         { background: #1a3a2c; }
+  .overlay-estado .estado-icon { font-size: 4rem; }
+  .overlay-estado .estado-texto {
+    color: #fff;
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1.2;
+  }
+  .overlay-estado .estado-sub {
+    color: rgba(255,255,255,0.65);
+    font-size: 1rem;
+    font-weight: 500;
+  }
 </style>
 </head>
 <body>
@@ -235,6 +264,18 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="overlay-estado" id="overlay-procesando">
+  <div class="estado-icon">⏳</div>
+  <div class="estado-texto">Procesando...</div>
+  <div class="estado-sub">Registrando las ventas del turno</div>
+</div>
+
+<div class="overlay-estado" id="overlay-ok">
+  <div class="estado-icon">✅</div>
+  <div class="estado-texto">¡Ventas registradas!</div>
+  <div class="estado-sub" id="overlay-ok-sub"></div>
+</div>
 
 <script>
 // ── Configuración ──────────────────────────────────────────────────────────────
@@ -342,7 +383,9 @@ async function enviar() {
 
   const btn = document.getElementById("submitBtn");
   btn.disabled = true;
-  btn.textContent = "Enviando…";
+
+  // Mostrar pantalla "Procesando"
+  document.getElementById("overlay-procesando").className = "overlay-estado procesando show";
 
   const payload = { fecha, turno, empleada, entradas };
 
@@ -354,15 +397,27 @@ async function enviar() {
       body: JSON.stringify(payload),
     });
 
+    // Ocultar procesando, mostrar éxito
+    document.getElementById("overlay-procesando").className = "overlay-estado procesando";
+    const totalUnidades = entradas.reduce((s,e) => s + e.cantidad, 0);
+    document.getElementById("overlay-ok-sub").textContent =
+      `${totalUnidades} unidades · ${turno === "manana" ? "☀️ Mañana" : "🌙 Tarde"} · ${empleada}`;
+    document.getElementById("overlay-ok").className = "overlay-estado ok show";
+
     // Resetear cantidades
     PRODUCTOS.forEach(g => g.items.forEach(p => { qty[p.id] = 0; }));
     renderForm();
-    showToast("✅ Ventas registradas");
+
+    // Ocultar éxito después de 2.5s
+    setTimeout(() => {
+      document.getElementById("overlay-ok").className = "overlay-estado ok";
+    }, 2500);
+
   } catch (e) {
+    document.getElementById("overlay-procesando").className = "overlay-estado procesando";
     showToast("❌ Error al enviar. Revisá el WiFi.", true);
   } finally {
     btn.disabled = false;
-    btn.textContent = "Enviar ventas";
   }
 }
 </script>
