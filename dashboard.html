@@ -673,18 +673,26 @@ function renderRentabilidad(data, costoOp) {
 
 // ── MARGEN ────────────────────────────────────────────────────────────────────
 function renderMargen(data, drawCharts = true) {
-  // ── Margen unitario: usar TODOS los datos (sin filtro turno/empleada) ──
+  // ── Margen unitario: precio/costo vigente en el período seleccionado ──
+  // Usa datos del período filtrado; si un producto no tiene ventas en ese período, usa el más reciente de allData
+  const periodData = getFilteredData();
   const unitByProd = {};
+  // Paso 1: fallback con datos históricos (más reciente de allData)
   allData.forEach(d => {
     if (d.precio_unit > 0) {
-      if (!unitByProd[d.nombre] || d.fecha > unitByProd[d.nombre].fecha) {
-        unitByProd[d.nombre] = {
-          fecha: d.fecha,
-          precio: parseNum(d.precio_unit),
-          costo:  parseNum(d.costo_var_unit),
-        };
-      }
+      if (!unitByProd[d.nombre] || d.fecha > unitByProd[d.nombre].fecha)
+        unitByProd[d.nombre] = { fecha: d.fecha, precio: parseNum(d.precio_unit), costo: parseNum(d.costo_var_unit) };
     }
+  });
+  // Paso 2: sobreescribir con el precio/costo del período seleccionado (más reciente dentro del período)
+  periodData.forEach(d => {
+    if (d.precio_unit > 0) {
+      if (!unitByProd[d.nombre + "_p"] || d.fecha > unitByProd[d.nombre + "_p"].fecha)
+        unitByProd[d.nombre + "_p"] = { fecha: d.fecha, precio: parseNum(d.precio_unit), costo: parseNum(d.costo_var_unit) };
+    }
+  });
+  Object.keys(unitByProd).filter(k => k.endsWith("_p")).forEach(k => {
+    unitByProd[k.replace("_p","")] = unitByProd[k];
   });
 
   // ── Margen agregado por producto ──
