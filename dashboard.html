@@ -584,11 +584,11 @@ function renderVentas(data) {
   drawBar("chart-ventas-prod", prodData.map(p=>p[0]), prodData.map(p=>p[1]),
           "Unidades", "#2c1a0e");
 
-  // Evolución por mes
-  const byMes = {};
-  data.forEach(d => { const m=d.fecha.slice(0,7); byMes[m]=(byMes[m]||0)+d.cantidad; });
-  const meses = Object.keys(byMes).sort();
-  drawLine("chart-ventas-evol", meses, meses.map(m=>byMes[m]), "Unidades", "#2c1a0e");
+  // Evolución por mes — sin filtro de período pero con turno/producto/grupo
+  const byMesEvol = {};
+  getFilteredDataSinPeriodo().forEach(d => { const m=d.fecha.slice(0,7); byMesEvol[m]=(byMesEvol[m]||0)+d.cantidad; });
+  const mesesEvol = Object.keys(byMesEvol).sort();
+  drawLine("chart-ventas-evol", mesesEvol, mesesEvol.map(m=>byMesEvol[m]), "Unidades", "#2c1a0e");
 }
 
 // ── FACTURACIÓN ───────────────────────────────────────────────────────────────
