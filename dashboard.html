@@ -327,7 +327,8 @@ input[type=month], input[type=date], input[type=week] {
           <th class="td-right">Costo var</th>
           <th class="td-right">Margen $</th>
           <th class="td-right">Margen %</th>
-          <th class="td-right">Markup</th>
+          <th class="td-right">Markup $</th>
+          <th class="td-right">Markup %</th>
           <th class="td-right">Costo op/día</th>
           <th class="td-right">P.E. / día</th>
         </tr>
@@ -1029,7 +1030,7 @@ function renderDetalle() {
   rows.sort((a,b) => a.nombre.localeCompare(b.nombre) || a.desde.localeCompare(b.desde));
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:#999;padding:20px">Sin datos</td></tr>';
     return;
   }
 
@@ -1047,6 +1048,7 @@ function renderDetalle() {
       <td class="td-right">${fmt$(r.costo)}</td>
       <td class="td-right" style="font-weight:700">${fmt$(r.margen)}</td>
       <td class="td-right" style="font-weight:700;color:${mcColor}">${fmtPct(r.margenPct)}</td>
+      <td class="td-right">${fmt$(r.margen)}</td>
       <td class="td-right" style="font-weight:700;color:${r.markup>=1.5?'#1a3a2c':r.markup>=1?'#c47a00':'#c0392b'}">${fmtPct(r.markup)}</td>
       <td class="td-right" style="color:#888">${fmt$(Math.round(r.avgCoOp))}</td>
       <td class="td-right" style="color:#555">${r.breakEven !== null ? r.breakEven + ' u/día' : '—'}</td>
