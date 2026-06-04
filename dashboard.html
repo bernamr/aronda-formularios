@@ -703,28 +703,8 @@ function renderMargen(data, drawCharts = true) {
     byProd[d.nombre].cv  += d.costo_var;
   });
 
-  // ── Costo operativo promedio diario del período filtrado ──
-  // Costo operativo diario promedio del período
-  // (total del período ÷ días con datos → unidades por día)
-  const totalOpPeriodo = getFilteredCostosOp();
-  const diasConOp = Object.keys(costosOp).filter(fecha => {
-    const dummy = { fecha };
-    // Reusar la misma lógica de filtro de fecha
-    const p = period;
-    const pickerMes    = document.getElementById("picker-mes").value;
-    const pickerDia    = document.getElementById("picker-dia").value;
-    const pickerSemana = document.getElementById("picker-semana").value;
-    if (p === "mes"    && fecha.slice(0,7) !== pickerMes) return false;
-    if (p === "dia"    && fecha !== pickerDia) return false;
-    if (p === "semana") {
-      const dDate = new Date(fecha + "T12:00:00");
-      const yr = dDate.getFullYear(); const wk = getWeekNumber(dDate);
-      if (`${yr}-W${String(wk).padStart(2,"0")}` !== pickerSemana) return false;
-    }
-    return true;
-  }).length;
-  const factorTurno = filters.turno !== "todos" ? 0.5 : 1;
-  const costoOpDiario = (totalOpPeriodo / Math.max(diasConOp, 1)) * factorTurno;
+  // ── Costo operativo diario del período — función compartida con la tabla ──
+  const costoOpDiario = getCostoOpDiario();
 
   const prodMargen = Object.entries(byProd)
     .filter(([,v]) => v.rev > 0)
@@ -984,9 +964,30 @@ function drawDonut(id, labels, values, colors) {
 }
 
 // ── DETALLE MÁRGENES (historial de cambios precio/costo) ──────────────────────
+function getCostoOpDiario() {
+  const totalOpPeriodo = getFilteredCostosOp();
+  const p = period;
+  const pickerMes    = document.getElementById("picker-mes").value;
+  const pickerDia    = document.getElementById("picker-dia").value;
+  const pickerSemana = document.getElementById("picker-semana").value;
+  const diasConOp = Object.keys(costosOp).filter(fecha => {
+    if (p === "mes"    && fecha.slice(0,7) !== pickerMes) return false;
+    if (p === "dia"    && fecha !== pickerDia) return false;
+    if (p === "semana") {
+      const dDate = new Date(fecha + "T12:00:00");
+      const yr = dDate.getFullYear(); const wk = getWeekNumber(dDate);
+      if (`${yr}-W${String(wk).padStart(2,"0")}` !== pickerSemana) return false;
+    }
+    return true;
+  }).length;
+  const factorTurno = filters.turno !== "todos" ? 0.5 : 1;
+  return (totalOpPeriodo / Math.max(diasConOp, 1)) * factorTurno;
+}
+
 function renderDetalle() {
   const search = (document.getElementById("det-search")?.value || "").toLowerCase();
   const tbody  = document.getElementById("tabla-detalle");
+  const costoOpDiario = getCostoOpDiario();
 
   // Sin filtro de período pero respeta turno/producto/grupo
   const source = getFilteredDataSinPeriodo();
@@ -1016,13 +1017,8 @@ function renderDetalle() {
         const margen = c.precio - c.costo;
         const margenPct = c.precio ? margen / c.precio : 0;
         const esCurrent = c.hasta === arr[arr.length-1].hasta && arr.length > 1 ? false : (i === arr.length-1);
-        // Break-even: usa el costo op diario promedio del período de esta combinación
         const hastaFecha = arr[i+1] ? arr[i+1].desde : null;
-        const coEntries = Object.entries(costosOp).filter(([f]) =>
-          f >= c.desde && (!hastaFecha || f < hastaFecha));
-        const avgCoOp = coEntries.length
-          ? coEntries.reduce((s,[,v]) => s+v, 0) / coEntries.length
-          : Object.values(costosOp).reduce((s,v)=>s+v,0) / (Object.keys(costosOp).length||1);
+        const avgCoOp = costoOpDiario;
         const breakEven = margen > 0 ? Math.ceil(avgCoOp / margen) : null;
 
         const markup = c.costo > 0 ? margen / c.costo : 0;
