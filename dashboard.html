@@ -251,6 +251,8 @@ input[type=month], input[type=date], input[type=week] {
   <div class="kpi-grid">
     <div class="kpi"><div class="kpi-label">Facturación total</div><div class="kpi-value verde" id="f-total">—</div></div>
     <div class="kpi"><div class="kpi-label">Ticket promedio</div><div class="kpi-value" id="f-ticket">—</div></div>
+    <div class="kpi"><div class="kpi-label">Promedio mensual</div><div class="kpi-value" id="f-mensual">—</div></div>
+    <div class="kpi"><div class="kpi-label">Promedio diario</div><div class="kpi-value" id="f-diario">—</div></div>
     <div class="kpi"><div class="kpi-label">Mejor producto</div><div class="kpi-value" id="f-top" style="font-size:1rem">—</div></div>
     <div class="kpi"><div class="kpi-label">vs período anterior</div><div class="kpi-value" id="f-vs">—</div></div>
   </div>
@@ -274,6 +276,7 @@ input[type=month], input[type=date], input[type=week] {
     <div class="kpi"><div class="kpi-label">Costo variable</div><div class="kpi-value rojo" id="r-costo-var">—</div></div>
     <div class="kpi"><div class="kpi-label">Costo operativo</div><div class="kpi-value rojo" id="r-costo-op">—</div></div>
     <div class="kpi"><div class="kpi-label">Rentabilidad neta</div><div class="kpi-value" id="r-neta">—</div></div>
+    <div class="kpi"><div class="kpi-label">Promedio mensual</div><div class="kpi-value" id="r-mensual">—</div></div>
     <div class="kpi"><div class="kpi-label">Margen bruto</div><div class="kpi-value" id="r-margen-bruto">—</div></div>
     <div class="kpi"><div class="kpi-label">Margen neto</div><div class="kpi-value" id="r-margen-neto">—</div></div>
   </div>
@@ -606,10 +609,17 @@ function renderFacturacion(data) {
   const sortedProds = Object.entries(byProd).sort((a,b)=>b[1].rev-a[1].rev);
   const topProd = sortedProds[0];
 
-  document.getElementById("f-total").textContent  = fmt$(total);
-  document.getElementById("f-ticket").textContent = fmt$(ticket);
-  document.getElementById("f-top").textContent    = topProd ? topProd[0] : "—";
-  document.getElementById("f-vs").textContent     = "—";
+  // Promedio mensual y diario sobre todos los datos (sin filtro período)
+  const allRev = allData.reduce((s,d) => s+d.revenue, 0);
+  const mesesTotal = new Set(allData.map(d => d.fecha.slice(0,7))).size || 1;
+  const diasTotal  = new Set(allData.map(d => d.fecha)).size || 1;
+
+  document.getElementById("f-total").textContent   = fmt$(total);
+  document.getElementById("f-ticket").textContent  = fmt$(ticket);
+  document.getElementById("f-mensual").textContent = fmt$(Math.round(allRev / mesesTotal));
+  document.getElementById("f-diario").textContent  = fmt$(Math.round(allRev / diasTotal));
+  document.getElementById("f-top").textContent     = topProd ? topProd[0] : "—";
+  document.getElementById("f-vs").textContent      = "—";
 
   drawBar("chart-fact-prod",
     sortedProds.slice(0,10).map(p=>p[0]),
@@ -637,10 +647,20 @@ function renderRentabilidad(data, costoOp) {
   const pctNeto  = revenue ? rentaNeta/revenue : 0;
 
   document.getElementById("r-revenue").textContent    = fmt$(revenue);
+  // Promedio mensual rentabilidad neta sobre todos los datos
+  const allRevTot = allData.reduce((s,d) => s+d.revenue, 0);
+  const allCvTot  = allData.reduce((s,d) => s+d.costo_var, 0);
+  const allCopTot = Object.values(costosOp).reduce((s,v)=>s+v, 0);
+  const mesesAll  = new Set(allData.map(d => d.fecha.slice(0,7))).size || 1;
+  const rentaNetaMensual = (allRevTot - allCvTot - allCopTot) / mesesAll;
+
+  document.getElementById("r-revenue").textContent    = fmt$(revenue);
   document.getElementById("r-costo-var").textContent  = fmt$(costoVar);
   document.getElementById("r-costo-op").textContent   = fmt$(costoOp);
   document.getElementById("r-neta").textContent       = fmt$(rentaNeta);
   document.getElementById("r-neta").className         = "kpi-value " + (rentaNeta>=0?"verde":"rojo");
+  document.getElementById("r-mensual").textContent    = fmt$(Math.round(rentaNetaMensual));
+  document.getElementById("r-mensual").className      = "kpi-value " + (rentaNetaMensual>=0?"verde":"rojo");
   document.getElementById("r-margen-bruto").textContent = fmtPct(pctBruto);
   document.getElementById("r-margen-neto").textContent  = fmtPct(pctNeto);
   document.getElementById("r-margen-neto").className    = "kpi-value " + (pctNeto>=0?"verde":"rojo");
