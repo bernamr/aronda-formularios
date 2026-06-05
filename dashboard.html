@@ -434,8 +434,10 @@ async function loadData() {
     sel.appendChild(opt);
   });
 
+  const ahora = new Date();
   document.getElementById("last-update").textContent =
-    "Actualizado " + new Date().toLocaleDateString("es-AR");
+    "Actualizado " + ahora.toLocaleDateString("es-AR") + " " +
+    ahora.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
   document.getElementById("loading").style.display = "none";
   render();
   renderDetalle();
