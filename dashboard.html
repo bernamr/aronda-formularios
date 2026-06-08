@@ -581,7 +581,9 @@ function diasEnMes(mesStr) {
 // Semana ISO de una fecha "YYYY-MM-DD" → "YYYY-WNN"
 function fechaToWeekStr(fechaStr) {
   const d = new Date(fechaStr + "T12:00:00");
-  return `${d.getFullYear()}-W${String(getWeekNumber(d)).padStart(2,"0")}`;
+  // Para el año usamos el del jueves de esa semana (ISO 8601)
+  const thu = new Date(d); thu.setDate(d.getDate() + 4 - (d.getDay()||7));
+  return `${thu.getFullYear()}-W${String(getWeekNumber(d)).padStart(2,"0")}`;
 }
 
 // Mes (YYYY-MM) del lunes de una semana "YYYY-WNN"
@@ -589,7 +591,7 @@ function weekStrToMes(weekStr) {
   if (!weekStr) return null;
   const [yr, wk] = weekStr.split("-W").map(Number);
   const jan4 = new Date(Date.UTC(yr, 0, 4));
-  const w1m  = new Date(jan4); w1m.setUTCDate(jan4.getUTCDate() - jan4.getUTCDay() + 1);
+  const w1m  = new Date(jan4); w1m.setUTCDate(jan4.getUTCDate() - (jan4.getUTCDay()||7) + 1);
   const wMon = new Date(w1m);  wMon.setUTCDate(w1m.getUTCDate() + (wk - 1) * 7);
   return wMon.toISOString().slice(0, 7);
 }

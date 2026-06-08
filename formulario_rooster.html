@@ -738,6 +738,7 @@ function renderPagos() {
         <button class="btn-pagar ${isPend?"pendiente":"pagado"}" onclick="togglePago(${i})">
           ${isPend ? "Pagar" : "✓ Pagado"}
         </button>
+        <button class="btn-edit-pago" onclick="eliminarPago(${i})" title="Eliminar" style="color:#c0392b;border-color:#f5c6c6">🗑</button>
       </div>
       ${isPend ? `
       <div class="edit-pago-form" id="ef-${i}">
@@ -811,6 +812,20 @@ async function guardarEditPago(i) {
 
   showToast("✅ Horas actualizadas");
   renderPagos();
+}
+
+async function eliminarPago(idx) {
+  if (!confirm("¿Eliminar este pago?")) return;
+  const sorted = sortedPagos();
+  const p = sorted[idx];
+
+  await fetch(ROOSTER_URL, {method:"POST", mode:"no-cors",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"delete_pago", semana_inicio: p.semana_inicio, empleada: p.empleada})});
+
+  todosPagos = todosPagos.filter(x => !(x.semana_inicio===p.semana_inicio && x.empleada===p.empleada));
+  renderPagos();
+  showToast("🗑 Pago eliminado");
 }
 
 async function togglePago(idx) {
