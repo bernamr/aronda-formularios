@@ -309,9 +309,18 @@ async function init() {
     todosLosTurnos = (data.turnos || []).map(t => ({
       ...t, fecha: String(t.fecha).slice(0,10)
     }));
-    todosPagos = (data.pagos || []).map(p => ({
-      ...p, semana_inicio: String(p.semana_inicio).slice(0,10)
+    // Cargar pagos: asignar _ts único y deduplicar (si el Sheet tiene filas repetidas)
+    let _tsCounter = Date.now();
+    const rawPagos = (data.pagos || []).map(p => ({
+      ...p, semana_inicio: String(p.semana_inicio).slice(0,10),
+      _ts: p._ts || String(_tsCounter++) + "_" + p.empleada
     }));
+    const _seenP = new Set();
+    todosPagos = rawPagos.filter(p => {
+      const k = p.semana_inicio + "|" + p.empleada;
+      if (_seenP.has(k)) return false;
+      _seenP.add(k); return true;
+    });
     // Cargar config del mes actual
     const ahora = new Date();
     const cfg = (data.config||[]).find(c => +c.año === ahora.getFullYear() && +c.mes === ahora.getMonth()+1)
@@ -676,7 +685,7 @@ function generarPagosSemana(turnos) {
 
     // No pisar un pago que ya fue marcado como pagado
     const existente = todosPagos.find(p => p.semana_inicio === semanaInicio && p.empleada === emp);
-    if (existente?.estado === "pagado") return;
+    if (existente?.estado === "pagado") continue;
 
     const monto = s.hNorm * pH + s.hDom * pD;
     await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
@@ -701,7 +710,8 @@ function generarPagosSemana(turnos) {
     } else {
       todosPagos.push({ semana_inicio: semanaInicio, empleada: emp,
         horas_normales: s.hNorm, horas_domingo: s.hDom,
-        monto, estado: "pendiente", fecha_pago: "" });
+        monto, estado: "pendiente", fecha_pago: "",
+        _ts: Date.now() + "_" + emp });
     }
   });
 
@@ -816,7 +826,7 @@ async function eliminarPago(idx) {
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({action:"delete_pago", semana_inicio: p.semana_inicio, empleada: p.empleada})});
 
-  todosPagos = todosPagos.filter(x => !(x.semana_inicio===p.semana_inicio && x.empleada===p.empleada));
+  todosPagos = todosPagos.filter(x => x._ts !== p._ts);
   renderPagos();
   showToast("🗑 Pago eliminado");
 }
