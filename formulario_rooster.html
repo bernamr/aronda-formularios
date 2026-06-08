@@ -103,27 +103,28 @@ td input.sinasignar { background: #fafafa; color: #bbb; }
   background: #fff; margin: 8px 16px;
   border-radius: 12px; padding: 14px 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  display: flex; align-items: center; gap: 12px;
 }
-.pago-info { flex: 1; }
+.pago-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .pago-nombre { font-weight: 700; font-size: 0.9rem; }
-.pago-detalle { font-size: 0.72rem; color: #888; margin-top: 2px; }
-.pago-monto { font-size: 1rem; font-weight: 800; color: #2c1a0e; margin-right: 10px; }
-.btn-pagar {
-  padding: 8px 14px; border: none; border-radius: 8px;
-  font-size: 0.8rem; font-weight: 700; cursor: pointer;
+.pago-monto { font-size: 1rem; font-weight: 800; color: #2c1a0e; }
+.pago-detalle { font-size: 0.72rem; color: #888; margin-bottom: 10px; }
+.pago-actions { display: flex; gap: 8px; }
+.btn-pago-action {
+  flex: 1; padding: 8px 4px; border: none; border-radius: 8px;
+  font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;
 }
-.btn-pagar.pendiente { background: #c0392b; color: #fff; }
-.btn-pagar.pagado    { background: #e8f5e9; color: #27ae60; border: 1.5px solid #27ae60; }
-.btn-edit-pago { background: none; border: 1.5px solid #ddd; border-radius: 8px; padding: 6px 9px; cursor: pointer; font-size: 0.8rem; color: #aaa; }
+.btn-pago-action.pagar    { background: #c0392b; color: #fff; }
+.btn-pago-action.pagado   { background: #e8f5e9; color: #27ae60; border: 1.5px solid #27ae60; }
+.btn-pago-action.editar   { background: #f5f0eb; color: #2c1a0e; }
+.btn-pago-action.eliminar { background: #fff0f0; color: #c0392b; }
 .edit-pago-form {
-  display: none; margin: -6px 16px 8px; padding: 12px 14px;
-  background: #fffbf5; border: 1.5px solid #f4a03a; border-radius: 0 0 10px 10px;
+  display: none; background: #fffbf5; margin: 0 16px 8px;
+  border: 1.5px solid #f4a03a; border-radius: 12px; padding: 12px 14px;
 }
 .edit-pago-form.show { display: block; }
 .edit-pago-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
 .edit-pago-label { font-size: 0.62rem; font-weight: 700; color: #888; text-transform: uppercase; display: block; margin-bottom: 3px; }
-.edit-pago-input { width: 100%; padding: 9px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 0.9rem; }
+.edit-pago-input { width: 100%; padding: 9px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 0.9rem; background: #fff; margin-bottom: 0; }
 .edit-pago-footer { display: flex; justify-content: space-between; align-items: center; }
 .btn-mini { padding: 7px 13px; border: none; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
 .total-pendiente {
@@ -724,65 +725,57 @@ function renderPagos() {
     .filter(p => p.estado !== "pagado")
     .reduce((s,p) => s + (+p.monto), 0);
 
-  const cards = sorted.map((p, i) => {
+  let html = "";
+  sorted.forEach(function(p, i) {
     const isPend = p.estado !== "pagado";
     const monto  = (+p.monto).toLocaleString("es-AR");
-    return `
-      <div class="pago-card" style="${isPend ? 'border-radius:12px 12px 0 0;margin-bottom:0' : ''}">
-        <div class="pago-info">
-          <div class="pago-nombre">${p.empleada}</div>
-          <div class="pago-detalle">Semana del ${p.semana_inicio} · ${p.horas_normales}hs norm + ${p.horas_domingo}hs dom</div>
-        </div>
-        <span class="pago-monto">$${monto}</span>
-        ${isPend ? `<button class="btn-edit-pago" onclick="toggleEditPago(${i})" title="Editar horas">✏️</button>` : ""}
-        <button class="btn-pagar ${isPend?"pendiente":"pagado"}" onclick="togglePago(${i})">
-          ${isPend ? "Pagar" : "✓ Pagado"}
-        </button>
-        <button class="btn-edit-pago" onclick="eliminarPago(${i})" title="Eliminar" style="color:#c0392b;border-color:#f5c6c6">🗑</button>
-      </div>
-      ${isPend ? `
-      <div class="edit-pago-form" id="ef-${i}">
-        <div class="edit-pago-row">
-          <div>
-            <span class="edit-pago-label">Hs normales</span>
-            <input class="edit-pago-input" type="number" step="0.25" min="0"
-              id="ehn-${i}" value="${p.horas_normales}"
-              oninput="recalcEditPago(${i},${pH},${pD})">
-          </div>
-          <div>
-            <span class="edit-pago-label">Hs domingo</span>
-            <input class="edit-pago-input" type="number" step="0.25" min="0"
-              id="ehd-${i}" value="${p.horas_domingo}"
-              oninput="recalcEditPago(${i},${pH},${pD})">
-          </div>
-        </div>
-        <div class="edit-pago-footer">
-          <span style="font-weight:800;font-size:1rem;color:#2c1a0e" id="et-${i}">$${monto}</span>
-          <div style="display:flex;gap:8px">
-            <button class="btn-mini" style="background:#eee;color:#555" onclick="toggleEditPago(${i})">Cancelar</button>
-            <button class="btn-mini" style="background:#2c1a0e;color:#fff" onclick="guardarEditPago(${i})">Guardar</button>
-          </div>
-        </div>
-      </div>
-      ` : ""}`;
-  }).join("");
+    const domStr = +p.horas_domingo > 0 ? " + " + p.horas_domingo + "hs dom" : "";
 
-  const totalHtml = totalPend > 0 ? `
-    <div class="total-pendiente">
-      <span style="color:#f5e6d3;font-size:0.8rem;font-weight:700;text-transform:uppercase">💰 Total a pagar</span>
-      <span style="color:#fff;font-size:1.2rem;font-weight:800">$${totalPend.toLocaleString("es-AR")}</span>
-    </div>` : "";
+    let actions = "";
+    if (isPend) {
+      actions  = '<button class="btn-pago-action editar" onclick="toggleEditPago(' + i + ')">✏️ Editar</button>';
+      actions += '<button class="btn-pago-action pagar" onclick="togglePago(' + i + ')">Pagar</button>';
+      actions += '<button class="btn-pago-action eliminar" onclick="eliminarPago(' + i + ')">🗑</button>';
+    } else {
+      actions  = '<button class="btn-pago-action pagado" onclick="togglePago(' + i + ')">✓ Pagado</button>';
+      actions += '<button class="btn-pago-action eliminar" onclick="eliminarPago(' + i + ')">🗑</button>';
+    }
+
+    html += '<div class="pago-card">';
+    html += '<div class="pago-top"><div class="pago-nombre">' + p.empleada + '</div><span class="pago-monto">$' + monto + '</span></div>';
+    html += '<div class="pago-detalle">Semana del ' + p.semana_inicio + ' · ' + p.horas_normales + 'hs norm' + domStr + '</div>';
+    html += '<div class="pago-actions">' + actions + '</div>';
+    html += '</div>';
+
+    if (isPend) {
+      html += '<div class="edit-pago-form" id="ef-' + i + '">';
+      html += '<div class="edit-pago-row">';
+      html += '<div><span class="edit-pago-label">Hs normales</span>';
+      html += '<input class="edit-pago-input" type="number" step="0.25" min="0" id="ehn-' + i + '" value="' + p.horas_normales + '" oninput="recalcEditPago(' + i + ',' + pH + ',' + pD + ')"></div>';
+      html += '<div><span class="edit-pago-label">Hs domingo</span>';
+      html += '<input class="edit-pago-input" type="number" step="0.25" min="0" id="ehd-' + i + '" value="' + p.horas_domingo + '" oninput="recalcEditPago(' + i + ',' + pH + ',' + pD + ')"></div>';
+      html += '</div>';
+      html += '<div class="edit-pago-footer">';
+      html += '<span style="font-weight:800;font-size:1rem;color:#2c1a0e" id="et-' + i + '">$' + monto + '</span>';
+      html += '<div style="display:flex;gap:8px">';
+      html += '<button class="btn-mini" style="background:#eee;color:#555" onclick="toggleEditPago(' + i + ')">Cancelar</button>';
+      html += '<button class="btn-mini" style="background:#2c1a0e;color:#fff" onclick="guardarEditPago(' + i + ')">Guardar</button>';
+      html += '</div></div></div>';
+    }
+  });
+
+  const totalHtml = totalPend > 0
+    ? '<div class="total-pendiente"><span style="color:#f5e6d3;font-size:0.8rem;font-weight:700;text-transform:uppercase">💰 Total a pagar</span><span style="color:#fff;font-size:1.2rem;font-weight:800">$' + totalPend.toLocaleString("es-AR") + '</span></div>'
+    : "";
 
   document.getElementById("lista-pagos").innerHTML = sorted.length
-    ? cards + totalHtml
+    ? html + totalHtml
     : '<div style="text-align:center;padding:30px;color:#aaa">Sin pagos registrados</div>';
 }
 
 function toggleEditPago(i) {
-  const ef   = document.getElementById("ef-" + i);
-  const card = document.querySelector(`#lista-pagos .pago-card:nth-of-type(${i+1})`);
-  if (!ef) return;
-  const showing = ef.classList.toggle("show");
+  const ef = document.getElementById("ef-" + i);
+  if (ef) ef.classList.toggle("show");
 }
 
 function recalcEditPago(i, pH, pD) {
