@@ -289,7 +289,7 @@ const qty = {};
 let PRODUCTOS = [];
 
 // ── Inicialización ─────────────────────────────────────────────────────────────
-document.getElementById("fecha").value = new Date().toISOString().slice(0, 10);
+const _hoy = new Date(); document.getElementById("fecha").value = `${_hoy.getFullYear()}-${String(_hoy.getMonth()+1).padStart(2,"0")}-${String(_hoy.getDate()).padStart(2,"0")}`;
 document.getElementById("form-body").innerHTML = '<div style="text-align:center;padding:40px;color:#aaa">Cargando productos...</div>';
 
 // Cargar productos dinámicamente desde Aronda_Productos

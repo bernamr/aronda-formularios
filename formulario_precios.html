@@ -252,7 +252,7 @@ const INSUMOS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQVMIBg
 
 let pendiente = null;
 document.getElementById("fecha-hoy").textContent = new Date().toLocaleDateString("es-AR");
-document.getElementById("modal-fecha").value = new Date().toISOString().slice(0,10);
+document.getElementById("modal-fecha").value = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
 
 async function cargarDatos() {
   try {
@@ -330,7 +330,7 @@ function abrirModal(id, nombre, precioActual) {
   document.getElementById("modal-title").textContent   = nombre;
   document.getElementById("modal-current").textContent = "Precio actual: " + fmt(precioActual);
   document.getElementById("modal-precio").value = "";
-  document.getElementById("modal-fecha").value  = new Date().toISOString().slice(0,10);
+  document.getElementById("modal-fecha").value  = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
   document.getElementById("overlay").className  = "overlay show";
   setTimeout(() => document.getElementById("modal-precio").focus(), 100);
 }
@@ -562,7 +562,7 @@ async function agregarProducto() {
     showToast("Agregá al menos un ingrediente", true); return;
   }
   const producto_id = (document.getElementById("np-id").value.trim() || generarId(nombre, grupo)).toUpperCase();
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
 
   // 1. Guardar producto + receta/insumos en Aronda_Productos
   await fetch(PRODUCTOS_SCRIPT_URL, {

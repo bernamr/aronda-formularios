@@ -156,7 +156,7 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwCsZMCDwqz9_Le
 // ── Estado ─────────────────────────────────────────────────────────────────────
 let pendiente = null;
 document.getElementById("fecha-hoy").textContent = new Date().toLocaleDateString("es-AR");
-document.getElementById("modal-fecha").value = new Date().toISOString().slice(0,10);
+document.getElementById("modal-fecha").value = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
 
 // ── Cargar datos ───────────────────────────────────────────────────────────────
 async function cargarDatos() {
@@ -233,7 +233,7 @@ function abrirModal(tipo, id, nombre, precioActual) {
   document.getElementById("modal-title").textContent   = nombre;
   document.getElementById("modal-current").textContent = "Precio actual: " + fmt(precioActual);
   document.getElementById("modal-precio").value = "";
-  document.getElementById("modal-fecha").value  = new Date().toISOString().slice(0,10);
+  document.getElementById("modal-fecha").value  = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
   document.getElementById("overlay").className  = "overlay show";
   setTimeout(() => document.getElementById("modal-precio").focus(), 100);
 }

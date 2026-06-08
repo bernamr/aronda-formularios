@@ -440,7 +440,7 @@ function fechaSemana() {
 
 function fechaDia(lunes, offset) {
   const d = new Date(lunes); d.setDate(lunes.getDate()+offset);
-  return d.toISOString().slice(0,10);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
 function esDomingo(lunes, dayIdx) {
@@ -820,7 +820,7 @@ async function togglePago(idx) {
   });
   const p = sorted[idx];
   p.estado = p.estado === "pagado" ? "pendiente" : "pagado";
-  p.fecha_pago = p.estado === "pagado" ? new Date().toISOString().slice(0,10) : "";
+  p.fecha_pago = p.estado === "pagado" ? (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })() : "";
 
   await fetch(ROOSTER_URL, {method:"POST",mode:"no-cors",
     headers:{"Content-Type":"application/json"},
@@ -828,7 +828,7 @@ async function togglePago(idx) {
 
   // Si se marca como pagado → registrar en Costos Operativos
   if (p.estado === "pagado") {
-    const hoy = new Date().toISOString().slice(0,10);
+    const hoy = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
     await fetch(COSTOS_OP_URL, {
       method:"POST", mode:"no-cors",
       headers:{"Content-Type":"application/json"},

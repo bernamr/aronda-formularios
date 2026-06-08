@@ -147,7 +147,7 @@ let concepto = null;
 let frecuencia = null;
 
 document.getElementById("fecha-hoy").textContent = new Date().toLocaleDateString("es-AR");
-document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+document.getElementById("fecha").value = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
 
 function setConcepto(c, freq) {
   concepto = c;
@@ -198,7 +198,7 @@ async function enviar() {
     document.getElementById("monto").value = "";
     document.getElementById("comentario").value = "";
     document.getElementById("otro-texto").className = "otro-input";
-    document.getElementById("fecha").value = new Date().toISOString().slice(0,10);
+    document.getElementById("fecha").value = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
 
   } catch(e) {
     showToast("❌ Error de conexión", true);

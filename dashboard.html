@@ -242,14 +242,6 @@ input[type=month], input[type=date], input[type=week] {
     <div class="kpi"><div class="kpi-label">Turno más activo</div><div class="kpi-value" id="v-turno">—</div></div>
     <div class="kpi"><div class="kpi-label">Top producto</div><div class="kpi-value" id="v-top" style="font-size:1rem">—</div></div>
   </div>
-  <div class="chart-card">
-    <div class="chart-title">Unidades por producto</div>
-    <div class="chart-wrap"><canvas id="chart-ventas-prod"></canvas></div>
-  </div>
-  <div class="chart-card">
-    <div class="chart-title">Evolución de ventas</div>
-    <div class="chart-wrap"><canvas id="chart-ventas-evol"></canvas></div>
-  </div>
   <!-- BE PROGRESS -->
   <div class="chart-card">
     <div class="chart-title">☕ Break even — Cafés &amp; Combos <span id="be-ref-label" style="font-weight:400;font-size:0.65rem;text-transform:none;color:var(--muted)"></span></div>
@@ -257,6 +249,14 @@ input[type=month], input[type=date], input[type=week] {
     <div id="be-semana"></div>
     <div id="be-mes"></div>
     <p style="font-size:0.65rem;color:#bbb;margin-top:2px">Cuántas unidades de Café Mediano, Café Grande y Combos son necesarias para cubrir el costo operativo diario promedio.</p>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Unidades por producto</div>
+    <div class="chart-wrap"><canvas id="chart-ventas-prod"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Evolución de ventas</div>
+    <div class="chart-wrap"><canvas id="chart-ventas-evol"></canvas></div>
   </div>
   <!-- PROMEDIO DIARIO POR ITEM -->
   <div class="tabla-card">
@@ -383,8 +383,9 @@ let period = "mes", filters = { turno: "todos", empleada: "todos", producto: "to
 const now = new Date();
 
 // Inicializar pickers
-document.getElementById("picker-mes").value = now.toISOString().slice(0,7);
-document.getElementById("picker-dia").value = now.toISOString().slice(0,10);
+const _nowY = now.getFullYear(), _nowM = String(now.getMonth()+1).padStart(2,"0"), _nowD = String(now.getDate()).padStart(2,"0");
+document.getElementById("picker-mes").value = `${_nowY}-${_nowM}`;
+document.getElementById("picker-dia").value = `${_nowY}-${_nowM}-${_nowD}`;
 
 // ── CSV parser (maneja comillas y comas en valores) ───────────────────────────
 function parseCSV(text) {
@@ -420,89 +421,71 @@ function parseNum(s) {
   return isNaN(v) ? 0 : v;
 }
 
-// ── Cache ──────────────────────────────────────────────────────────────────────
-const CACHE_KEY    = "aronda_data_v2";
-const CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutos
-
 // ── Carga de datos ──────────────────────────────────────────────────────────────
-async function loadData(forceFresh = false) {
-  // Intentar caché
-  if (!forceFresh) {
-    try {
-      const raw = localStorage.getItem(CACHE_KEY);
-      if (raw) {
-        const cached = JSON.parse(raw);
-        if ((Date.now() - cached.ts) < CACHE_TTL_MS) {
-          applyData(cached.t1, cached.t2, cached.t3, true);
-          return;
-        }
-      }
-    } catch(e) {}
+async function loadData() {
+  try {
+    // 2 CSV: ventas y costos op raw (URL_COSTOS ya no se usa — costosOp se deriva del raw)
+    const [r1, r3] = await Promise.all([
+      fetch(URL_DETALLE), fetch(URL_COSTOS_OP_RAW)
+    ]);
+    const [t1, t3] = await Promise.all([r1.text(), r3.text()]);
+
+    allData = parseCSV(t1).map(d => ({
+      ...d,
+      cantidad:       parseNum(d.cantidad),
+      precio_unit:    parseNum(d.precio_unit),
+      costo_var_unit: parseNum(d.costo_var_unit),
+      revenue:        parseNum(d.revenue),
+      costo_var:      parseNum(d.costo_var),
+      margen_bruto:   parseNum(d.margen_bruto),
+    })).filter(d => d.producto_id && d.fecha);
+
+    // Costos op raw
+    costosOpRaw = parseCSV(t3).map(r => ({
+      ...r, monto: parseNum(r.monto) || 0
+    })).filter(r => r.fecha && r.concepto && r.monto > 0);
+
+    // Construir costosOp desde raw (suma de montos por fecha)
+    // Esto hace que Rentabilidad y Márgenes estén siempre en sync con el sheet raw
+    costosOp = {};
+    costosOpRaw.forEach(r => {
+      costosOp[r.fecha] = (costosOp[r.fecha] || 0) + r.monto;
+    });
+
+    // Poblar selector con lo que ya hay en ventas
+    populateProductSelector([]);
+
+    const ahora = new Date();
+    document.getElementById("last-update").textContent =
+      "Actualizado " + ahora.toLocaleDateString("es-AR") + " " +
+      ahora.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+    document.getElementById("loading").style.display = "none";
+    render();
+    renderDetalle();
+
+    // Catálogo completo — lazy, no bloquea el render principal
+    fetch(URL_PRODUCTOS_API)
+      .then(r => r.json())
+      .catch(() => ({ productos: [] }))
+      .then(data => populateProductSelector((data.productos || [])
+        .filter(p => String(p.activo) === "1").map(p => p.nombre)));
+
+  } catch(err) {
+    console.error("Error cargando datos:", err);
+    document.getElementById("loading").innerHTML =
+      `<div style="text-align:center;padding:40px;color:#c0392b">
+        ❌ Error al cargar datos<br>
+        <small style="color:#888">${err.message}</small><br><br>
+        <button onclick="loadData()" style="padding:10px 20px;background:#2c1a0e;color:#fff;
+          border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Reintentar</button>
+      </div>`;
   }
-
-  // Fetch los 3 CSV (sin esperar el catálogo — lo cargamos después)
-  const [r1, r2, r3] = await Promise.all([
-    fetch(URL_DETALLE), fetch(URL_COSTOS), fetch(URL_COSTOS_OP_RAW)
-  ]);
-  const [t1, t2, t3] = await Promise.all([r1.text(), r2.text(), r3.text()]);
-
-  // Guardar en caché
-  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), t1, t2, t3 })); }
-  catch(e) {}
-
-  applyData(t1, t2, t3, false);
-
-  // Catálogo de productos — lazy, no bloquea el render
-  fetch(URL_PRODUCTOS_API)
-    .then(r => r.json())
-    .catch(() => ({ productos: [] }))
-    .then(catalogoData => populateProductSelector(catalogoData));
 }
 
-function applyData(t1, t2, t3, fromCache) {
-  allData = parseCSV(t1).map(d => ({
-    ...d,
-    cantidad:       parseNum(d.cantidad),
-    precio_unit:    parseNum(d.precio_unit),
-    costo_var_unit: parseNum(d.costo_var_unit),
-    revenue:        parseNum(d.revenue),
-    costo_var:      parseNum(d.costo_var),
-    margen_bruto:   parseNum(d.margen_bruto),
-  })).filter(d => d.producto_id && d.fecha);
-
-  // Mapa fecha → costo_op
-  parseCSV(t2).forEach(c => {
-    const v = parseNum(c.costo_op);
-    if (c.fecha && v > 0) costosOp[c.fecha] = v;
-  });
-
-  // Costos op raw para desglose por concepto
-  costosOpRaw = parseCSV(t3).map(r => ({
-    ...r, monto: parseNum(r.monto) || 0
-  })).filter(r => r.fecha && r.concepto && r.monto > 0);
-
-  // Poblar selector con productos de las ventas (inmediato, sin esperar catálogo)
-  populateProductSelector({ productos: [] });
-
-  const ahora = new Date();
-  const cacheLabel = fromCache ? " · 💾 caché" : "";
-  document.getElementById("last-update").textContent =
-    "Actualizado " + ahora.toLocaleDateString("es-AR") + " " +
-    ahora.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) + cacheLabel;
-  document.getElementById("loading").style.display = "none";
-  render();
-  renderDetalle();
-}
-
-function populateProductSelector(catalogoData) {
-  const catalogoProds = (catalogoData.productos || [])
-    .filter(p => String(p.activo) === "1")
-    .map(p => p.nombre)
-    .sort();
+function populateProductSelector(catalogoNombres) {
   const prodsConVentas = [...new Set(allData.map(d => d.nombre))];
-  const todosProd = [...new Set([...catalogoProds, ...prodsConVentas])].sort();
+  const todosProd = [...new Set([...catalogoNombres, ...prodsConVentas])].sort();
   const sel = document.getElementById("sel-producto");
-  // Limpiar opciones previas (excepto "Todos")
   while (sel.options.length > 1) sel.remove(1);
   todosProd.forEach(p => {
     const opt = document.createElement("option");
@@ -587,22 +570,73 @@ function getFilteredData() {
   });
 }
 
-function getFilteredCostosOp() {
-  const p = period;
-  const pickerMes = document.getElementById("picker-mes").value;
-  const pickerDia = document.getElementById("picker-dia").value;
-  const pickerSemana = document.getElementById("picker-semana").value;
+// Retorna "YYYY-MM" del mes relevante para el período actual
+// Días del mes dado "YYYY-MM"
+function diasEnMes(mesStr) {
+  if (!mesStr) return 30;
+  const [yr, mo] = mesStr.split("-").map(Number);
+  return new Date(yr, mo, 0).getDate();
+}
 
-  return Object.entries(costosOp).filter(([fecha]) => {
-    if (p === "mes"    && fecha.slice(0,7) !== pickerMes) return false;
-    if (p === "dia"    && fecha !== pickerDia) return false;
+// Semana ISO de una fecha "YYYY-MM-DD" → "YYYY-WNN"
+function fechaToWeekStr(fechaStr) {
+  const d = new Date(fechaStr + "T12:00:00");
+  return `${d.getFullYear()}-W${String(getWeekNumber(d)).padStart(2,"0")}`;
+}
+
+// Mes (YYYY-MM) del lunes de una semana "YYYY-WNN"
+function weekStrToMes(weekStr) {
+  if (!weekStr) return null;
+  const [yr, wk] = weekStr.split("-W").map(Number);
+  const jan4 = new Date(Date.UTC(yr, 0, 4));
+  const w1m  = new Date(jan4); w1m.setUTCDate(jan4.getUTCDate() - jan4.getUTCDay() + 1);
+  const wMon = new Date(w1m);  wMon.setUTCDate(w1m.getUTCDate() + (wk - 1) * 7);
+  return wMon.toISOString().slice(0, 7);
+}
+
+// Aporte de una entrada al período dado, respetando su frecuencia
+function aporteCostoAlPeriodo(r, p, pickerMes, pickerDia, pickerSemana) {
+  const frec  = (r.frecuencia || "mensual").toLowerCase();
+  const rMes  = r.fecha.slice(0, 7);
+  const rWeek = fechaToWeekStr(r.fecha);
+
+  if (frec === "mensual") {
+    // Se prorratea según cuántos días del período caen en ese mes
+    const dias = diasEnMes(rMes);
+    if (p === "total")                            return r.monto;
+    if (p === "mes"    && rMes === pickerMes)     return r.monto;
+    if (p === "dia"    && rMes === pickerDia.slice(0,7)) return r.monto / dias;
     if (p === "semana") {
-      const dDate = new Date(fecha + "T12:00:00");
-      const yr = dDate.getFullYear(); const wk = getWeekNumber(dDate);
-      if (`${yr}-W${String(wk).padStart(2,"0")}` !== pickerSemana) return false;
+      const wkMes = weekStrToMes(pickerSemana);
+      if (rMes === wkMes) return r.monto / dias * 7;
     }
-    return true;
-  }).reduce((s,[,v]) => s + v, 0);
+    return 0;
+  }
+
+  if (frec === "semanal") {
+    // Solo aplica a la semana exacta en que fue registrado
+    if (p === "total")                              return r.monto;
+    if (p === "semana" && rWeek === pickerSemana)   return r.monto;
+    if (p === "mes"    && rMes  === pickerMes)      return r.monto;
+    if (p === "dia"    && fechaToWeekStr(pickerDia) === rWeek) return r.monto / 7;
+    return 0;
+  }
+
+  // "diario" / "único"
+  if (p === "total")                                     return r.monto;
+  if (p === "dia"    && r.fecha === pickerDia)           return r.monto;
+  if (p === "semana" && rWeek  === pickerSemana)         return r.monto;
+  if (p === "mes"    && rMes   === pickerMes)            return r.monto;
+  return 0;
+}
+
+// Costo op total del período — respeta frecuencia (sin factor turno)
+function getFilteredCostosOp() {
+  const p            = period;
+  const pickerMes    = document.getElementById("picker-mes").value;
+  const pickerDia    = document.getElementById("picker-dia").value;
+  const pickerSemana = document.getElementById("picker-semana").value;
+  return costosOpRaw.reduce((s, r) => s + aporteCostoAlPeriodo(r, p, pickerMes, pickerDia, pickerSemana), 0);
 }
 
 function getWeekNumber(d) {
@@ -714,21 +748,37 @@ function renderBEProgress() {
   const avgMarginUnit = totalCant > 0 ? totalMargen / totalCant : 0;
   if (avgMarginUnit <= 0) return;
 
-  // Costo operativo diario promedio (histórico total)
-  const copKeys = Object.keys(costosOp);
-  if (!copKeys.length) return;
-  const costoOpDiarioAvg = Object.values(costosOp).reduce((s,v)=>s+v,0) / copKeys.length;
+  // Calcular costos reales de hoy / esta semana / este mes usando aporteCostoAlPeriodo
+  const _t = new Date(); const today = `${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,"0")}-${String(_t.getDate()).padStart(2,"0")}`;
+  const thisMonth  = today.slice(0,7);
+  const thisWeekStr = fechaToWeekStr(today);
+  const daysThisMonth = diasEnMes(thisMonth);
+
+  const costoSemana = costosOpRaw.reduce((s,r) =>
+    s + aporteCostoAlPeriodo(r, "semana", thisMonth, today, thisWeekStr), 0);
+  const costoMes = costosOpRaw.reduce((s,r) =>
+    s + aporteCostoAlPeriodo(r, "mes", thisMonth, today, thisWeekStr), 0);
+  // Para "hoy" usamos la tasa diaria de esta semana (refleja los costos vigentes)
+  const costoHoy = costoSemana > 0 ? costoSemana / 7 : costoMes / daysThisMonth;
+
+  // Fallback histórico si no hay datos del mes actual
+  const fallbackDiario = (() => {
+    const byMes = {};
+    costosOpRaw.forEach(r => { byMes[r.fecha.slice(0,7)] = (byMes[r.fecha.slice(0,7)]||0) + r.monto; });
+    const meses = Object.keys(byMes);
+    if (!meses.length) return 0;
+    return meses.reduce((s,m) => s + byMes[m]/diasEnMes(m), 0) / meses.length;
+  })();
+
+  const dHoy    = costoHoy    > 0 ? costoHoy    : fallbackDiario;
+  const dSemana = costoSemana > 0 ? costoSemana : fallbackDiario * 7;
+  const dMes    = costoMes    > 0 ? costoMes    : fallbackDiario * daysThisMonth;
+  if (dHoy <= 0) return;
 
   // Targets de break even
-  const beDay  = Math.ceil(costoOpDiarioAvg / avgMarginUnit);
-  const beWeek = Math.ceil(costoOpDiarioAvg * 7 / avgMarginUnit);
-  const beMes  = Math.ceil(costoOpDiarioAvg * 30 / avgMarginUnit);
-
-  // Ventas reales — siempre fijado a hoy / esta semana / este mes
-  const today = new Date().toISOString().slice(0,10);
-  const thisMonth = today.slice(0,7);
-  const todayD = new Date(today + "T12:00:00");
-  const thisWeekStr = `${todayD.getFullYear()}-W${String(getWeekNumber(todayD)).padStart(2,"0")}`;
+  const beDay  = Math.ceil(dHoy    / avgMarginUnit);
+  const beWeek = Math.ceil(dSemana / avgMarginUnit);
+  const beMes  = Math.ceil(dMes    / avgMarginUnit);
 
   let soldDay = 0, soldWeek = 0, soldMonth = 0;
   allData.filter(d => refNames.has(d.nombre)).forEach(d => {
@@ -741,7 +791,7 @@ function renderBEProgress() {
 
   // Label de referencia
   const el = document.getElementById("be-ref-label");
-  if (el) el.textContent = `· margen prom. ${fmt$(Math.round(avgMarginUnit))}/u`;
+  if (el) el.textContent = `· margen prom. ${fmt$(Math.round(avgMarginUnit))}/u · costo op diario ${fmt$(Math.round(dHoy))}`;
 
   renderBERow("be-dia",    soldDay,   beDay,   "Hoy");
   renderBERow("be-semana", soldWeek,  beWeek,  "Esta semana");
@@ -1029,23 +1079,38 @@ function renderCostosOp() {
   const p = period;
   const conceptoFilt = filters.concepto || "todos";
 
-  // Filtrar por período Y por concepto
+  const pickerSemana = document.getElementById("picker-semana").value;
+
+  // Para el total mostrado usamos getFilteredCostosOp (respeta frecuencia y prorrateo)
+  // Para el desglose por concepto filtramos las entradas que aplican al período
   const rawFiltrado = costosOpRaw.filter(r => {
     if (!r.fecha) return false;
-    if (p === "mes" && r.fecha.slice(0,7) !== pickerMes) return false;
-    if (p === "dia" && r.fecha !== pickerDia) return false;
+    // Filtro período: incluir entradas que "aportan" algo al período seleccionado
+    if (p === "mes"    && r.fecha.slice(0,7) !== pickerMes) return false;
+    if (p === "dia"    && r.fecha.slice(0,7) !== pickerDia.slice(0,7)) return false;
+    if (p === "semana") {
+      // Incluir entradas del mes al que pertenece la semana (mensual) o de esa semana exacta (semanal)
+      const frec = (r.frecuencia || "mensual").toLowerCase();
+      const wkMes = weekStrToMes(pickerSemana);
+      if (frec === "mensual" && r.fecha.slice(0,7) !== wkMes) return false;
+      if (frec === "semanal" && fechaToWeekStr(r.fecha) !== pickerSemana) return false;
+    }
     if (conceptoFilt !== "todos" && (r.concepto||"").toLowerCase() !== conceptoFilt.toLowerCase()) return false;
     return true;
   });
 
-  const totalOp = rawFiltrado.reduce((s,r) => s + r.monto, 0);
+  // Total prorateado del período (no suma cruda)
+  const totalOp = getFilteredCostosOp();
 
   // Promedio diario correcto: usa costosOp (ya distribuido diariamente) filtrado por período
   const promDiario = getCostoOpDiario();
 
-  // Sueldos y luz del período
+  // Sueldos y luz del período — usando aporte prorateado, no monto crudo
   const porConcepto = {};
-  rawFiltrado.forEach(r => porConcepto[r.concepto||"otro"] = (porConcepto[r.concepto||"otro"]||0) + r.monto);
+  rawFiltrado.forEach(r => {
+    const aporte = aporteCostoAlPeriodo(r, p, pickerMes, pickerDia, pickerSemana);
+    porConcepto[r.concepto||"otro"] = (porConcepto[r.concepto||"otro"]||0) + aporte;
+  });
   const conceptos = Object.entries(porConcepto).sort((a,b)=>b[1]-a[1]);
 
   document.getElementById("co-total").textContent   = fmt$(totalOp);
@@ -1157,24 +1222,27 @@ function drawDonut(id, labels, values, colors) {
 }
 
 // ── DETALLE MÁRGENES (historial de cambios precio/costo) ──────────────────────
+// Costo op diario del período vigente — prorateado, con factor turno
+// Costo operativo diario del período — divide getFilteredCostosOp por días del período
 function getCostoOpDiario() {
-  const totalOpPeriodo = getFilteredCostosOp();
-  const p = period;
-  const pickerMes    = document.getElementById("picker-mes").value;
-  const pickerDia    = document.getElementById("picker-dia").value;
-  const pickerSemana = document.getElementById("picker-semana").value;
-  const diasConOp = Object.keys(costosOp).filter(fecha => {
-    if (p === "mes"    && fecha.slice(0,7) !== pickerMes) return false;
-    if (p === "dia"    && fecha !== pickerDia) return false;
-    if (p === "semana") {
-      const dDate = new Date(fecha + "T12:00:00");
-      const yr = dDate.getFullYear(); const wk = getWeekNumber(dDate);
-      if (`${yr}-W${String(wk).padStart(2,"0")}` !== pickerSemana) return false;
-    }
-    return true;
-  }).length;
   const factorTurno = filters.turno !== "todos" ? 0.5 : 1;
-  return (totalOpPeriodo / Math.max(diasConOp, 1)) * factorTurno;
+  const total = getFilteredCostosOp();
+  let dias;
+  if (period === "dia")    { dias = 1; }
+  else if (period === "semana") { dias = 7; }
+  else if (period === "mes") {
+    const mes = document.getElementById("picker-mes").value;
+    dias = mes ? diasEnMes(mes) : 30;
+  } else {
+    // "total": promedio histórico ponderado por mes
+    const byMes = {};
+    costosOpRaw.forEach(r => { byMes[r.fecha.slice(0,7)] = (byMes[r.fecha.slice(0,7)]||0) + r.monto; });
+    const meses = Object.keys(byMes);
+    if (!meses.length) return 0;
+    const sumD = meses.reduce((s,m) => s + byMes[m] / diasEnMes(m), 0);
+    return (sumD / meses.length) * factorTurno;
+  }
+  return (total / dias) * factorTurno;
 }
 
 function renderDetalle() {
@@ -1278,7 +1346,7 @@ function refreshDash() {
   btn.disabled = true;
   allData = []; costosOp = {}; costosOpRaw = [];
   document.getElementById("loading").style.display = "";
-  loadData(true).finally(() => {
+  loadData().finally(() => {
     btn.textContent = "↺ Actualizar";
     btn.disabled = false;
   });
