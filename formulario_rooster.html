@@ -720,10 +720,9 @@ function generarPagosSemana(turnos) {
 
 // ── Pagos ──────────────────────────────────────────────────────────────────────
 function sortedPagos() {
-  return [...todosPagos].sort((a,b) => {
-    if (a.estado === b.estado) return b.semana_inicio > a.semana_inicio ? 1 : -1;
-    return a.estado === "pendiente" ? -1 : 1;
-  });
+  return [...todosPagos]
+    .filter(p => p.estado !== "pagado")
+    .sort((a,b) => b.semana_inicio > a.semana_inicio ? 1 : -1);
 }
 
 function renderPagos() {
