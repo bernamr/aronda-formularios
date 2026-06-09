@@ -393,12 +393,10 @@ const _nowY = now.getFullYear(), _nowM = String(now.getMonth()+1).padStart(2,"0"
 document.getElementById("picker-mes").value = `${_nowY}-${_nowM}`;
 document.getElementById("picker-dia").value = `${_nowY}-${_nowM}-${_nowD}`;
 // Inicializar picker-semana con la semana ISO actual
+// Usamos fechaToWeekStr para garantizar consistencia con el resto del código
 (function() {
-  const d = new Date(now);
-  d.setDate(d.getDate() + 4 - (d.getDay()||7));
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  const wk = Math.ceil(((d - jan1) / 86400000 + 1) / 7);
-  document.getElementById("picker-semana").value = d.getFullYear() + "-W" + String(wk).padStart(2,"0");
+  const _nowStr = _nowY + "-" + _nowM + "-" + _nowD;
+  document.getElementById("picker-semana").value = fechaToWeekStr(_nowStr);
 })();
 
 // ── CSV parser (maneja comillas y comas en valores) ───────────────────────────
@@ -781,7 +779,12 @@ function renderPromedioDiario(data) {
 
 // ── BREAK EVEN PROGRESS ───────────────────────────────────────────────────────
 function renderBEProgress() {
-  // Productos de referencia según filtros activos
+  // Limpiar siempre al inicio
+  ["be-dia","be-semana","be-mes"].forEach(id => {
+    const e = document.getElementById(id); if (e) e.innerHTML = "";
+  });
+
+  // ── 1. Productos de referencia ─────────────────────────────────────────
   let refNames;
   if (filters.productos.length > 0) {
     refNames = new Set(filters.productos);
@@ -792,19 +795,14 @@ function renderBEProgress() {
       .filter(d => d.nombre === "Café Mediano" || d.nombre === "Café Grande" || d.grupo === "Combos")
       .map(d => d.nombre));
   }
-  if (refNames.size === 0) {
-    ["be-dia","be-semana","be-mes"].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=""; });
-    return;
-  }
+  if (refNames.size === 0 || costosOpRaw.length === 0) return;
 
-  // Precio/costo unitario más reciente por producto (histórico)
+  // ── 2. Margen promedio ponderado por volumen (histórico completo) ───────
   const unitByProd = {};
   allData.filter(d => refNames.has(d.nombre) && d.precio_unit > 0).forEach(d => {
     if (!unitByProd[d.nombre] || d.fecha > unitByProd[d.nombre].fecha)
-      unitByProd[d.nombre] = { precio: d.precio_unit, costo: d.costo_var_unit };
+      unitByProd[d.nombre] = { precio: d.precio_unit, costo: d.costo_var_unit || 0 };
   });
-
-  // Margen promedio ponderado por volumen histórico
   let totalCant = 0, totalMargen = 0;
   allData.filter(d => refNames.has(d.nombre)).forEach(d => {
     const u = unitByProd[d.nombre];
@@ -813,42 +811,100 @@ function renderBEProgress() {
   const avgMarginUnit = totalCant > 0 ? totalMargen / totalCant : 0;
   if (avgMarginUnit <= 0) return;
 
-  // Usar los valores de los pickers (igual que getFilteredData)
-  const pickerMes    = document.getElementById("picker-mes").value;
-  const pickerDia    = document.getElementById("picker-dia").value;
-  const pickerSemana = document.getElementById("picker-semana").value;
+  // ── 3. Pickers ─────────────────────────────────────────────────────────
+  const pickerMes    = document.getElementById("picker-mes").value;    // "YYYY-MM"
+  const pickerDia    = document.getElementById("picker-dia").value;    // "YYYY-MM-DD"
+  const pickerSemana = document.getElementById("picker-semana").value; // "YYYY-WNN"
 
-  // Fecha real de hoy (para la barra "Hoy" siempre actual)
+  // Hoy real (siempre actual, independiente del picker)
   const _t = new Date();
-  const hoy      = `${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,"0")}-${String(_t.getDate()).padStart(2,"0")}`;
-  const hoyMes   = hoy.slice(0,7);
-  const hoyWeek  = fechaToWeekStr(hoy);
+  const hoy    = _t.getFullYear() + "-" + String(_t.getMonth()+1).padStart(2,"0") + "-" + String(_t.getDate()).padStart(2,"0");
+  const hoyMes = hoy.slice(0,7);
+  const hoyWeek = fechaToWeekStr(hoy);
 
-  // Costos para CADA picker — así cada barra responde a su picker
-  const costoMesPicker    = costosOpRaw.reduce((s,r) => s + aporteCostoAlPeriodo(r, "mes",    pickerMes, pickerDia, pickerSemana), 0);
-  const costoSemanaPicker = costosOpRaw.reduce((s,r) => s + aporteCostoAlPeriodo(r, "semana", pickerMes, pickerDia, pickerSemana), 0);
-  const costoHoyReal      = costosOpRaw.reduce((s,r) => s + aporteCostoAlPeriodo(r, "dia",    hoyMes,    hoy,       hoyWeek),      0);
+  // ── 4. Separar costos por frecuencia ──────────────────────────────────
+  const frec = r => (r.frecuencia || "mensual").toLowerCase();
+  const costosMensuales = costosOpRaw.filter(r => frec(r) === "mensual");
+  const costosSemanales = costosOpRaw.filter(r => frec(r) === "semanal");
+  const costosDiarios   = costosOpRaw.filter(r => ["diario","único","unico"].includes(frec(r)));
 
-  // Turno factor
+  // ── 5. Costos mensuales — con fallback al último mes disponible ────────
+  // Luz, alquiler, seguros, etc: se prorratea uniformemente en todos los días del mes
+  const mesBuscado = pickerMes || hoyMes;
+  let costoMensualBase = costosMensuales
+    .filter(r => r.fecha.slice(0,7) === mesBuscado)
+    .reduce((s,r) => s + r.monto, 0);
+  let estimadoMes = false, effectiveMes = mesBuscado;
+  if (costoMensualBase === 0 && costosMensuales.length > 0) {
+    const meses = [...new Set(costosMensuales.map(r => r.fecha.slice(0,7)))].sort();
+    effectiveMes = meses[meses.length - 1];
+    costoMensualBase = costosMensuales
+      .filter(r => r.fecha.slice(0,7) === effectiveMes)
+      .reduce((s,r) => s + r.monto, 0);
+    estimadoMes = true;
+  }
+  const daysInMes = diasEnMes(effectiveMes);
+
+  // ── 6. Costos semanales — con fallback a la última semana pagada ───────
+  // Sueldos: pago el domingo, cubre la semana Mon-Dom de esa fecha.
+  // Si estoy a mitad de semana y todavía no pagué, uso la semana anterior con *.
+  const semBuscada = pickerSemana || hoyWeek;
+  let costoSemanalBase = costosSemanales
+    .filter(r => fechaToWeekStr(r.fecha) === semBuscada)
+    .reduce((s,r) => s + r.monto, 0);
+  let estimadoSem = false, effectiveSem = semBuscada;
+  if (costoSemanalBase === 0 && costosSemanales.length > 0) {
+    // No hay pago esta semana aún — usar la semana más reciente pagada
+    const semsDisp = [...new Set(costosSemanales.map(r => fechaToWeekStr(r.fecha)))].sort();
+    effectiveSem = semsDisp[semsDisp.length - 1];
+    costoSemanalBase = costosSemanales
+      .filter(r => fechaToWeekStr(r.fecha) === effectiveSem)
+      .reduce((s,r) => s + r.monto, 0);
+    estimadoSem = true;
+  }
+
+  // ── 7. Costos puntuales del día de hoy ────────────────────────────────
+  const costoHoyPuntual = costosDiarios
+    .filter(r => r.fecha === hoy)
+    .reduce((s,r) => s + r.monto, 0);
+
+  // Sin datos de ningún tipo → salir
+  if (costoMensualBase === 0 && costoSemanalBase === 0) return;
+
+  // ── 8. Combinar por período ────────────────────────────────────────────
+  // Mensual: mensual + semanal*(días_del_mes/7)
+  // Semana:  mensual/días*7 + semanal
+  // Día:     mensual/días + semanal/7 + puntual_hoy
   const tf = filters.turno !== "todos" ? 0.5 : 1;
-  const dMes    = costoMesPicker    * tf;
-  const dSemana = costoSemanaPicker * tf;
-  const dHoy    = costoHoyReal      * tf;
+  const costoMes = (costoMensualBase + costoSemanalBase * daysInMes / 7) * tf;
+  const costoSem = (costoMensualBase / daysInMes * 7 + costoSemanalBase) * tf;
+  const costoHoy = (costoMensualBase / daysInMes + (costoSemanalBase > 0 ? costoSemanalBase / 7 : 0) + costoHoyPuntual) * tf;
 
-  // Targets
-  const beMes    = dMes    > 0 ? Math.ceil(dMes    / avgMarginUnit) : 0;
-  const beSemana = dSemana > 0 ? Math.ceil(dSemana / avgMarginUnit) : 0;
-  const beHoy    = dHoy    > 0 ? Math.ceil(dHoy    / avgMarginUnit) : 0;
+  // ── 9. Targets ─────────────────────────────────────────────────────────
+  const beMes  = Math.ceil(costoMes  / avgMarginUnit);
+  const beSem  = Math.ceil(costoSem  / avgMarginUnit);
+  const beHoy  = Math.ceil(costoHoy  / avgMarginUnit);
 
-  // Unidades vendidas — filtradas por turno, matchean CADA picker
+  // ── 10. Unidades vendidas por período ──────────────────────────────────
   const beBase = allData.filter(d =>
     refNames.has(d.nombre) && (filters.turno === "todos" || d.turno === filters.turno)
   );
-  const soldMes    = beBase.filter(d => d.fecha.slice(0,7) === pickerMes).reduce((s,d) => s + d.cantidad, 0);
-  const soldSemana = pickerSemana ? beBase.filter(d => fechaToWeekStr(d.fecha) === pickerSemana).reduce((s,d) => s + d.cantidad, 0) : 0;
-  const soldHoy    = beBase.filter(d => d.fecha === hoy).reduce((s,d) => s + d.cantidad, 0);
+  const soldMes = beBase
+    .filter(d => d.fecha.slice(0,7) === (pickerMes || hoyMes))
+    .reduce((s,d) => s + d.cantidad, 0);
+  const soldSem = beBase
+    .filter(d => fechaToWeekStr(d.fecha) === (pickerSemana || hoyWeek))
+    .reduce((s,d) => s + d.cantidad, 0);
+  const soldHoy = beBase
+    .filter(d => d.fecha === hoy)
+    .reduce((s,d) => s + d.cantidad, 0);
 
-  // Título dinámico
+  // ── 11. Etiquetas ──────────────────────────────────────────────────────
+  const estimado = estimadoMes || estimadoSem;
+  const est = estimado ? " *" : "";
+  const mesLabel = (pickerMes || hoyMes).replace("-", "/") + est;
+  const semLabel = "Sem. " + (pickerSemana || hoyWeek).split("-W")[1] + est;
+
   const refLabel = filters.productos.length > 0
     ? filters.productos.slice(0,2).join(", ") + (filters.productos.length > 2 ? " …" : "")
     : filters.grupos.length > 0 ? filters.grupos.join(", ")
@@ -856,33 +912,24 @@ function renderBEProgress() {
   const elTitle = document.getElementById("be-section-title");
   if (elTitle) elTitle.textContent = "☕ Break even — " + refLabel;
   const elSub = document.getElementById("be-ref-label");
-  if (elSub) elSub.textContent = "· margen prom. " + fmt$(Math.round(avgMarginUnit)) + "/u";
+  const subParts = ["· margen ~" + fmt$(Math.round(avgMarginUnit)) + "/u"];
+  if (costoMensualBase > 0) subParts.push("mensual " + fmt$(Math.round(costoMensualBase)) + (estimadoMes ? " ("+effectiveMes.replace("-",".")+"*)" : ""));
+  if (costoSemanalBase > 0) subParts.push("semanal " + fmt$(Math.round(costoSemanalBase)) + (estimadoSem ? " ("+effectiveSem.split("-W")[1]+"* sem.)" : ""));
+  if (elSub) elSub.textContent = subParts.join(" · ");
 
-  // Mostrar la barra del período activo + siempre "Hoy"
-  const mesLabel    = pickerMes    ? pickerMes.replace("-", "/")                                 : "Mes";
-  const semanaLabel = pickerSemana ? "Sem. " + pickerSemana.split("-W")[1]                       : "Semana";
-
+  // ── 9. Renderizar barras según período activo ──────────────────────────
   if (period === "mes") {
-    if (beMes > 0)  renderBERow("be-mes",    soldMes,    beMes,    dMes,    "Mes " + mesLabel);
-    else { const e = document.getElementById("be-mes"); if(e) e.innerHTML = ""; }
-    if (beHoy > 0)  renderBERow("be-dia",    soldHoy,    beHoy,    dHoy,    "Hoy");
-    else { const e = document.getElementById("be-dia"); if(e) e.innerHTML = ""; }
-    const e = document.getElementById("be-semana"); if(e) e.innerHTML = "";
+    renderBERow("be-mes", soldMes, beMes, costoMes, "Mes " + mesLabel);
+    renderBERow("be-dia", soldHoy, beHoy, costoHoy, "Hoy");
   } else if (period === "semana") {
-    if (beSemana > 0) renderBERow("be-semana", soldSemana, beSemana, dSemana, "Semana " + semanaLabel);
-    else { const e = document.getElementById("be-semana"); if(e) e.innerHTML = ""; }
-    if (beHoy > 0)  renderBERow("be-dia",    soldHoy,    beHoy,    dHoy,    "Hoy");
-    else { const e = document.getElementById("be-dia"); if(e) e.innerHTML = ""; }
-    const e = document.getElementById("be-mes"); if(e) e.innerHTML = "";
+    renderBERow("be-semana", soldSem, beSem, costoSem, "Semana " + semLabel);
+    renderBERow("be-dia",    soldHoy, beHoy, costoHoy, "Hoy");
   } else if (period === "dia") {
-    if (beHoy > 0)  renderBERow("be-dia",    soldHoy,    beHoy,    dHoy,    "Hoy");
-    else { const e = document.getElementById("be-dia"); if(e) e.innerHTML = ""; }
-    const e1 = document.getElementById("be-semana"); if(e1) e1.innerHTML = "";
-    const e2 = document.getElementById("be-mes"); if(e2) e2.innerHTML = "";
+    renderBERow("be-dia", soldHoy, beHoy, costoHoy, "Hoy");
   } else { // total
-    if (beMes > 0)    renderBERow("be-mes",    soldMes,    beMes,    dMes,    "Mes " + mesLabel);
-    if (beSemana > 0) renderBERow("be-semana", soldSemana, beSemana, dSemana, "Semana " + semanaLabel);
-    if (beHoy > 0)    renderBERow("be-dia",    soldHoy,    beHoy,    dHoy,    "Hoy");
+    renderBERow("be-mes",    soldMes, beMes, costoMes, "Mes " + mesLabel);
+    renderBERow("be-semana", soldSem, beSem, costoSem, "Semana " + semLabel);
+    renderBERow("be-dia",    soldHoy, beHoy, costoHoy, "Hoy");
   }
 }
 
