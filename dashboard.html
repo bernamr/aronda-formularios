@@ -45,6 +45,8 @@ header h1 { font-size: 1rem; letter-spacing: 1px; }
   color: var(--muted); transition: all .15s;
 }
 .fbtn.active { background: var(--cafe); border-color: var(--cafe); color: #fff; }
+.fchip { display:inline-flex; align-items:center; gap:5px; background:var(--cafe); color:#fff; padding:3px 10px; border-radius:20px; font-size:0.72rem; font-weight:600; }
+.fchip button { background:none; border:none; color:#fff; cursor:pointer; font-size:0.9rem; padding:0; line-height:1; }
 select.fsel {
   padding: 6px 10px; border: 1.5px solid var(--border); border-radius: 20px;
   background: var(--bg); font-size: 0.78rem; color: var(--text); cursor: pointer;
@@ -176,20 +178,24 @@ input[type=month], input[type=date], input[type=week] {
       <button class="fbtn" onclick="setFilter('empleada','Nadia')">Nadia</button>
       <button class="fbtn" onclick="setFilter('empleada','Lara')">Lara</button>
     </div>
-    <select class="fsel" id="sel-producto" onchange="setFilter('producto',this.value)">
-      <option value="todos">Todos los productos</option>
-    </select>
   </div>
   <div class="filter-row">
     <span class="filter-label">Grupo</span>
     <div class="btn-group">
-      <button class="fbtn active" onclick="setFilter('grupo','todos')">Todos</button>
-      <button class="fbtn" onclick="setFilter('grupo','Combos')">Combos</button>
-      <button class="fbtn" onclick="setFilter('grupo','Café')">Café</button>
-      <button class="fbtn" onclick="setFilter('grupo','Pasteleria')">Pastelería</button>
-      <button class="fbtn" onclick="setFilter('grupo','Panaderia')">Panadería</button>
-      <button class="fbtn" onclick="setFilter('grupo','Bebidas Frias')">Bebidas</button>
+      <button class="fbtn fbtn-grupo active" data-v="todos"         onclick="setFilter('grupo','todos')">Todos</button>
+      <button class="fbtn fbtn-grupo"        data-v="Combos"        onclick="setFilter('grupo','Combos')">Combos</button>
+      <button class="fbtn fbtn-grupo"        data-v="Café"          onclick="setFilter('grupo','Café')">Café</button>
+      <button class="fbtn fbtn-grupo"        data-v="Pasteleria"    onclick="setFilter('grupo','Pasteleria')">Pastelería</button>
+      <button class="fbtn fbtn-grupo"        data-v="Panaderia"     onclick="setFilter('grupo','Panaderia')">Panadería</button>
+      <button class="fbtn fbtn-grupo"        data-v="Bebidas Frias" onclick="setFilter('grupo','Bebidas Frias')">Bebidas</button>
     </div>
+  </div>
+  <div class="filter-row">
+    <span class="filter-label">Producto</span>
+    <select class="fsel" id="sel-producto" onchange="setFilter('producto',this.value)">
+      <option value="todos">+ Agregar producto</option>
+    </select>
+    <div id="chips-producto" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
   </div>
 </div>
 
@@ -244,7 +250,7 @@ input[type=month], input[type=date], input[type=week] {
   </div>
   <!-- BE PROGRESS -->
   <div class="chart-card">
-    <div class="chart-title">☕ Break even — Cafés &amp; Combos <span id="be-ref-label" style="font-weight:400;font-size:0.65rem;text-transform:none;color:var(--muted)"></span></div>
+    <div class="chart-title"><span id="be-section-title">☕ Break even — Café Mediano, Grande &amp; Combos</span> <span id="be-ref-label" style="font-weight:400;font-size:0.65rem;text-transform:none;color:var(--muted)"></span></div>
     <div id="be-dia"></div>
     <div id="be-semana"></div>
     <div id="be-mes"></div>
@@ -379,7 +385,7 @@ const URL_PRODUCTOS_API = "https://script.google.com/macros/s/AKfycby9AOVwJa2Ydc
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 let allData = [], costosOp = {}, costosOpRaw = [], charts = {};
-let period = "mes", filters = { turno: "todos", empleada: "todos", producto: "todos", grupo: "todos", concepto: "todos" };
+let period = "mes", filters = { turno: "todos", empleada: "todos", productos: [], grupos: [], concepto: "todos" };
 const now = new Date();
 
 // Inicializar pickers
@@ -518,8 +524,26 @@ function setConceptoFilt(val) {
 }
 
 function setFilter(key, val) {
+  if (key === "grupo") {
+    if (val === "todos") { filters.grupos = []; }
+    else {
+      const idx = filters.grupos.indexOf(val);
+      if (idx >= 0) filters.grupos.splice(idx, 1); else filters.grupos.push(val);
+    }
+    _refreshGrupoButtons();
+    render(); return;
+  }
+  if (key === "producto") {
+    if (val === "todos") { filters.productos = []; }
+    else {
+      if (!filters.productos.includes(val)) filters.productos.push(val);
+      document.getElementById("sel-producto").value = "todos";
+    }
+    _refreshProductoChips();
+    render(); return;
+  }
   filters[key] = val;
-  const groupMap = { turno: 1, empleada: 2, grupo: 3 };
+  const groupMap = { turno: 1, empleada: 2 };
   if (groupMap[key] !== undefined) {
     const rows = document.querySelectorAll(".filter-row");
     rows[groupMap[key]].querySelectorAll(".fbtn").forEach(b => {
@@ -530,12 +554,34 @@ function setFilter(key, val) {
   render();
 }
 
+function _refreshGrupoButtons() {
+  document.querySelectorAll(".fbtn-grupo").forEach(b => {
+    const v = b.dataset.v;
+    const isActive = v === "todos" ? filters.grupos.length === 0 : filters.grupos.includes(v);
+    b.className = "fbtn fbtn-grupo" + (isActive ? " active" : "");
+  });
+}
+
+function _refreshProductoChips() {
+  const el = document.getElementById("chips-producto");
+  if (!el) return;
+  el.innerHTML = filters.productos.map((p, i) =>
+    '<span class="fchip">' + p + ' <button onclick="removeProductoFilt(' + i + ')">×</button></span>'
+  ).join("");
+}
+
+function removeProductoFilt(i) {
+  filters.productos.splice(i, 1);
+  _refreshProductoChips();
+  render();
+}
+
 function getFilteredDataSinPeriodo() {
   return allData.filter(d => {
-    if (filters.turno    !== "todos" && d.turno   !== filters.turno)    return false;
+    if (filters.turno    !== "todos" && d.turno    !== filters.turno)    return false;
     if (filters.empleada !== "todos" && d.empleada !== filters.empleada) return false;
-    if (filters.producto !== "todos" && d.nombre  !== filters.producto) return false;
-    if (filters.grupo    !== "todos" && d.grupo   !== filters.grupo)    return false;
+    if (filters.productos.length > 0 && !filters.productos.includes(d.nombre)) return false;
+    if (filters.grupos.length    > 0 && !filters.grupos.includes(d.grupo))     return false;
     return true;
   });
 }
@@ -562,10 +608,9 @@ function getFilteredData() {
     if (filters.turno !== "todos" && d.turno !== filters.turno) return false;
     // Empleada
     if (filters.empleada !== "todos" && d.empleada !== filters.empleada) return false;
-    // Producto
-    if (filters.producto !== "todos" && d.nombre !== filters.producto) return false;
-    // Grupo
-    if (filters.grupo !== "todos" && d.grupo !== filters.grupo) return false;
+    // Producto / Grupo (multiselect)
+    if (filters.productos.length > 0 && !filters.productos.includes(d.nombre)) return false;
+    if (filters.grupos.length    > 0 && !filters.grupos.includes(d.grupo))     return false;
     return true;
   });
 }
@@ -728,13 +773,21 @@ function renderPromedioDiario(data) {
 
 // ── BREAK EVEN PROGRESS ───────────────────────────────────────────────────────
 function renderBEProgress() {
-  // Productos de referencia: Café Mediano, Café Grande y todos los Combos
-  const refNames = new Set(allData
-    .filter(d => d.nombre === "Café Mediano" || d.nombre === "Café Grande" || d.grupo === "Combos")
-    .map(d => d.nombre));
-  if (refNames.size === 0) return;
+  // Determinar productos de referencia según filtros activos
+  let refNames;
+  if (filters.productos.length > 0) {
+    refNames = new Set(filters.productos);
+  } else if (filters.grupos.length > 0) {
+    refNames = new Set(allData.filter(d => filters.grupos.includes(d.grupo)).map(d => d.nombre));
+  } else {
+    // Default: Café Mediano, Café Grande y Combos
+    refNames = new Set(allData
+      .filter(d => d.nombre === "Café Mediano" || d.nombre === "Café Grande" || d.grupo === "Combos")
+      .map(d => d.nombre));
+  }
+  if (refNames.size === 0) { ["be-dia","be-semana","be-mes"].forEach(id => { const e=document.getElementById(id); if(e) e.innerHTML=""; }); return; }
 
-  // Precio/costo unitario más reciente por producto de referencia
+  // Precio/costo unitario más reciente por producto
   const unitByProd = {};
   allData.filter(d => refNames.has(d.nombre) && d.precio_unit > 0).forEach(d => {
     if (!unitByProd[d.nombre] || d.fecha > unitByProd[d.nombre].fecha)
@@ -750,18 +803,16 @@ function renderBEProgress() {
   const avgMarginUnit = totalCant > 0 ? totalMargen / totalCant : 0;
   if (avgMarginUnit <= 0) return;
 
-  // Calcular costos reales de hoy / esta semana / este mes usando aporteCostoAlPeriodo
-  const _t = new Date(); const today = `${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,"0")}-${String(_t.getDate()).padStart(2,"0")}`;
-  const thisMonth  = today.slice(0,7);
+  // Costos (siempre hoy/esta semana/este mes en el calendario)
+  const _t = new Date();
+  const today = `${_t.getFullYear()}-${String(_t.getMonth()+1).padStart(2,"0")}-${String(_t.getDate()).padStart(2,"0")}`;
+  const thisMonth   = today.slice(0,7);
   const thisWeekStr = fechaToWeekStr(today);
   const daysThisMonth = diasEnMes(thisMonth);
 
-  const costoSemana = costosOpRaw.reduce((s,r) =>
-    s + aporteCostoAlPeriodo(r, "semana", thisMonth, today, thisWeekStr), 0);
-  const costoMes = costosOpRaw.reduce((s,r) =>
-    s + aporteCostoAlPeriodo(r, "mes", thisMonth, today, thisWeekStr), 0);
-  // Para "hoy" usamos la tasa diaria de esta semana (refleja los costos vigentes)
-  const costoHoy = costoSemana > 0 ? costoSemana / 7 : costoMes / daysThisMonth;
+  const costoSemana = costosOpRaw.reduce((s,r) => s + aporteCostoAlPeriodo(r, "semana", thisMonth, today, thisWeekStr), 0);
+  const costoMes    = costosOpRaw.reduce((s,r) => s + aporteCostoAlPeriodo(r, "mes",    thisMonth, today, thisWeekStr), 0);
+  const costoHoyRaw = costoSemana > 0 ? costoSemana / 7 : costoMes / daysThisMonth;
 
   // Fallback histórico si no hay datos del mes actual
   const fallbackDiario = (() => {
@@ -772,53 +823,62 @@ function renderBEProgress() {
     return meses.reduce((s,m) => s + byMes[m]/diasEnMes(m), 0) / meses.length;
   })();
 
-  const dHoy    = costoHoy    > 0 ? costoHoy    : fallbackDiario;
-  const dSemana = costoSemana > 0 ? costoSemana : fallbackDiario * 7;
-  const dMes    = costoMes    > 0 ? costoMes    : fallbackDiario * daysThisMonth;
+  // Aplicar factor de turno: si hay filtro por turno, asignamos 50% del costo a ese turno
+  const turnoFactor = filters.turno !== "todos" ? 0.5 : 1;
+  const dHoy    = (costoHoyRaw > 0 ? costoHoyRaw : fallbackDiario) * turnoFactor;
+  const dSemana = (costoSemana > 0 ? costoSemana : fallbackDiario * 7) * turnoFactor;
+  const dMes    = (costoMes    > 0 ? costoMes    : fallbackDiario * daysThisMonth) * turnoFactor;
   if (dHoy <= 0) return;
 
-  // Targets de break even
+  // Targets break even
   const beDay  = Math.ceil(dHoy    / avgMarginUnit);
   const beWeek = Math.ceil(dSemana / avgMarginUnit);
   const beMes  = Math.ceil(dMes    / avgMarginUnit);
 
+  // Unidades vendidas — respeta filtro de turno
   let soldDay = 0, soldWeek = 0, soldMonth = 0;
-  allData.filter(d => refNames.has(d.nombre)).forEach(d => {
+  allData.filter(d =>
+    refNames.has(d.nombre) &&
+    (filters.turno === "todos" || d.turno === filters.turno)
+  ).forEach(d => {
     if (d.fecha === today) soldDay += d.cantidad;
     if (d.fecha.slice(0,7) === thisMonth) soldMonth += d.cantidad;
-    const dD = new Date(d.fecha + "T12:00:00");
-    const wStr = `${dD.getFullYear()}-W${String(getWeekNumber(dD)).padStart(2,"0")}`;
-    if (wStr === thisWeekStr) soldWeek += d.cantidad;
+    if (fechaToWeekStr(d.fecha) === thisWeekStr) soldWeek += d.cantidad;
   });
 
-  // Label de referencia
-  const el = document.getElementById("be-ref-label");
-  if (el) el.textContent = `· margen prom. ${fmt$(Math.round(avgMarginUnit))}/u · costo op diario ${fmt$(Math.round(dHoy))}`;
+  // Label dinámico según filtro activo
+  const refLabel = filters.productos.length > 0
+    ? filters.productos.slice(0,2).join(", ") + (filters.productos.length > 2 ? " …" : "")
+    : filters.grupos.length > 0 ? filters.grupos.join(", ")
+    : "Café Mediano, Grande & Combos";
 
-  renderBERow("be-dia",    soldDay,   beDay,   "Hoy");
-  renderBERow("be-semana", soldWeek,  beWeek,  "Esta semana");
-  renderBERow("be-mes",    soldMonth, beMes,   "Este mes");
+  const elTitle = document.getElementById("be-section-title");
+  if (elTitle) elTitle.textContent = "☕ Break even — " + refLabel;
+  const elSub = document.getElementById("be-ref-label");
+  if (elSub) elSub.textContent = `· margen prom. ${fmt$(Math.round(avgMarginUnit))}/u · costo diario ${fmt$(Math.round(dHoy))}`;
+
+  renderBERow("be-dia",    soldDay,   beDay,   dHoy,    "Hoy");
+  renderBERow("be-semana", soldWeek,  beWeek,  dSemana, "Esta semana");
+  renderBERow("be-mes",    soldMonth, beMes,   dMes,    "Este mes");
 }
 
-function renderBERow(id, sold, target, label) {
+function renderBERow(id, sold, target, costoTarget, label) {
   const el = document.getElementById(id);
   if (!el) return;
   const pct    = target > 0 ? Math.min(sold / target, 1) : 0;
   const faltan = Math.max(target - sold, 0);
   const color  = pct >= 1 ? "#1a3a2c" : pct >= 0.6 ? "#c47a00" : "#c0392b";
-  const status = pct >= 1 ? "✅ ¡Cubierto!" : `te faltan <b>${faltan}</b>`;
-  el.innerHTML = `
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
-        <span style="font-size:0.78rem;font-weight:700;color:#555">${label}</span>
-        <span style="font-size:0.82rem;color:${color}">
-          vendiste <b>${sold}</b> · necesitás <b>${target}</b> · ${status}
-        </span>
-      </div>
-      <div style="background:#f0ebe5;border-radius:6px;height:10px;overflow:hidden">
-        <div style="height:100%;width:${Math.round(pct*100)}%;background:${color};border-radius:6px;transition:width .4s"></div>
-      </div>
-    </div>`;
+  const status = pct >= 1 ? "✅ ¡Cubierto!" : `faltan <b>${faltan}</b> uds`;
+  el.innerHTML =
+    '<div style="margin-bottom:12px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">' +
+        '<span style="font-size:0.78rem;font-weight:700;color:#555">' + label + '</span>' +
+        '<span style="font-size:0.82rem;color:' + color + '">vendiste <b>' + sold + '</b> / <b>' + target + '</b> · ' + status + '</span>' +
+      '</div>' +
+      '<div style="background:#f0ebe5;border-radius:6px;height:10px;overflow:hidden">' +
+        '<div style="height:100%;width:' + Math.round(pct*100) + '%;background:' + color + ';border-radius:6px;transition:width .4s"></div>' +
+      '</div>' +
+    '</div>';
 }
 
 // ── FACTURACIÓN ───────────────────────────────────────────────────────────────
