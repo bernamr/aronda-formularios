@@ -917,13 +917,12 @@ function renderBEProgress() {
   if (costoSemanalBase > 0) subParts.push("semanal " + fmt$(Math.round(costoSemanalBase)) + (estimadoSem ? " ("+effectiveSem.split("-W")[1]+"* sem.)" : ""));
   if (elSub) elSub.textContent = subParts.join(" · ");
 
-  // ── 9. Renderizar barras según período activo ──────────────────────────
+  // ── 9. Renderizar: una barra por período activo ────────────────────────
+  // "Total" muestra las 3; cada otro período solo muestra la suya.
   if (period === "mes") {
     renderBERow("be-mes", soldMes, beMes, costoMes, "Mes " + mesLabel);
-    renderBERow("be-dia", soldHoy, beHoy, costoHoy, "Hoy");
   } else if (period === "semana") {
     renderBERow("be-semana", soldSem, beSem, costoSem, "Semana " + semLabel);
-    renderBERow("be-dia",    soldHoy, beHoy, costoHoy, "Hoy");
   } else if (period === "dia") {
     renderBERow("be-dia", soldHoy, beHoy, costoHoy, "Hoy");
   } else { // total
