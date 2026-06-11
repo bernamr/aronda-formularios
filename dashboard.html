@@ -378,10 +378,43 @@ input[type=month], input[type=date], input[type=week] {
 
 <script>
 // ── URLs ───────────────────────────────────────────────────────────────────────
-const URL_DETALLE    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQpq8IhT5HFkqmfma57pKx1GsC_gio-H2NoNU1dvejmxsxjDLOU-K5NHbQPjLnIfVGeKEhUdbsYDh_k/pub?gid=1497902444&single=true&output=csv";
-const URL_COSTOS     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQpq8IhT5HFkqmfma57pKx1GsC_gio-H2NoNU1dvejmxsxjDLOU-K5NHbQPjLnIfVGeKEhUdbsYDh_k/pub?gid=420933623&single=true&output=csv";
+const URL_DETALLE       = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTjcsM4Ba3JgwbCRxTJtVL15x14_JkE4pn5RMQ7D6Mjw4lH0mOcx2qFeliMO-1kTHEUoeK9Nuqz2yhR/pub?gid=696584358&single=true&output=csv";
 const URL_COSTOS_OP_RAW = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_XXRuizm6a2kJ2UDnAEaqlHXGnzGQjnkxq_xy_lmJLzJ2ZNfbWQrYkHtaDN5KRJxmVUbNZmxMIi0P/pub?gid=430128240&single=true&output=csv";
 const URL_PRODUCTOS_API = "https://script.google.com/macros/s/AKfycby9AOVwJa2YdcbxAzpuH3bsbnXqGo-d-K2_9CjK5MsrrLZwQfyfZNK3hOd5UQeMVT04nw/exec";
+// Misma API que usa formulario_precios.html — precios siempre actualizados
+const URL_PRECIOS_API   = "https://script.google.com/macros/s/AKfycbxLaN2-axcWfDR6UCVHZG8MF7C6ikjaIilnGqCds-hJlmHW5TxzBQcGJOzfM_Xl6FcfHQ/exec";
+// Misma API que usa formulario_costos.html — costos directos (PND, BF, PS) en tiempo real
+const URL_COSTOS_VAR_API = "https://script.google.com/macros/s/AKfycbwCsZMCDwqz9_Leka_V7BKY6Dnw6OZIyQNsF94lYdPTzuVYPK2BU4_3JFoQL3CxHVge/exec";
+
+// ── Catálogo base: fallback para productos tipo receta (CB-*, CF-*) ────────────
+// Costos directos (PND-*, BF-*, PS-*) vienen en tiempo real de URL_COSTOS_VAR_API.
+// Actualizar acá solo si cambia la receta de un combo o café.
+const CATALOGO = {
+  "BF-BT":      { nombre:"Botellas",         grupo:"Bebidas Frias", precio:2000, costo:1500 },
+  "BF-JG":      { nombre:"Jugo",             grupo:"Bebidas Frias", precio:4300, costo:2500 },
+  "BF-KMB":     { nombre:"Kombucha",         grupo:"Bebidas Frias", precio:4300, costo:2500 },
+  "BF-LIC":     { nombre:"Licuado",          grupo:"Bebidas Frias", precio:5000, costo:400  },
+  "BF-LT":      { nombre:"Latas",            grupo:"Bebidas Frias", precio:3200, costo:2500 },
+  "CB-CK":      { nombre:"Combo Cookie",     grupo:"Combos",        precio:5500, costo:2760 },
+  "CB-GR":      { nombre:"Combo Grande",     grupo:"Combos",        precio:4200, costo:2140 },
+  "CB-KIDS":    { nombre:"Combo Kids",       grupo:"Combos",        precio:5000, costo:1700 },
+  "CB-MD":      { nombre:"Combo Mediano",    grupo:"Combos",        precio:3700, costo:1700 },
+  "CF-CH":      { nombre:"Café Chico",       grupo:"Café",          precio:2000, costo:900  },
+  "CF-FR":      { nombre:"Café Frio",        grupo:"Café",          precio:3500, costo:1400 },
+  "CF-GR":      { nombre:"Café Grande",      grupo:"Café",          precio:3500, costo:1460 },
+  "CF-MD":      { nombre:"Café Mediano",     grupo:"Café",          precio:3000, costo:960  },
+  "CF-TE":      { nombre:"Te",               grupo:"Café",          precio:2000, costo:700  },
+  "PND-BDN":    { nombre:"Budin",            grupo:"Panaderia",     precio:2800, costo:1700 },
+  "PND-CRS":    { nombre:"Croissant",        grupo:"Panaderia",     precio:2200, costo:1000 },
+  "PND-CRSJYQ": { nombre:"Croissant JyQ",    grupo:"Panaderia",     precio:3200, costo:1250 },
+  "PND-MDL":    { nombre:"Medialuna",        grupo:"Panaderia",     precio:900,  costo:370  },
+  "PND-MFLD":   { nombre:"Mafalda",          grupo:"Panaderia",     precio:1500, costo:620  },
+  "PND-TRT":    { nombre:"Tortilla",         grupo:"Panaderia",     precio:600,  costo:160  },
+  "PS-ALF":     { nombre:"Alfajor nuez",     grupo:"Pasteleria",    precio:2800, costo:1700 },
+  "PS-BRW":     { nombre:"Brownie",          grupo:"Pasteleria",    precio:3000, costo:2000 },
+  "PS-CK":      { nombre:"Cookie",           grupo:"Pasteleria",    precio:3000, costo:1800 },
+  "PS-CKP":     { nombre:"Cookie Pistacho",  grupo:"Pasteleria",    precio:4500, costo:3500 },
+};
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 let allData = [], costosOp = {}, costosOpRaw = [], charts = {};
@@ -436,23 +469,60 @@ function parseNum(s) {
 // ── Carga de datos ──────────────────────────────────────────────────────────────
 async function loadData() {
   try {
-    // 2 CSV: ventas y costos op raw (URL_COSTOS ya no se usa — costosOp se deriva del raw)
+    // Ventas CSV + costos op + precios API + costos var API (en paralelo)
     const cb = "&_cb=" + Date.now();
-    const [r1, r3] = await Promise.all([
-      fetch(URL_DETALLE    + cb, { cache: "no-store" }),
-      fetch(URL_COSTOS_OP_RAW + cb, { cache: "no-store" })
+    const t  = Date.now();
+    const [r1, r3, rPrecios, rCostosVar] = await Promise.all([
+      fetch(URL_DETALLE        + cb, { cache: "no-store" }),
+      fetch(URL_COSTOS_OP_RAW  + cb, { cache: "no-store" }),
+      fetch(URL_PRECIOS_API    + "?t=" + t).catch(() => null),
+      fetch(URL_COSTOS_VAR_API + "?t=" + t).catch(() => null)
     ]);
     const [t1, t3] = await Promise.all([r1.text(), r3.text()]);
 
-    allData = parseCSV(t1).map(d => ({
-      ...d,
-      cantidad:       parseNum(d.cantidad),
-      precio_unit:    parseNum(d.precio_unit),
-      costo_var_unit: parseNum(d.costo_var_unit),
-      revenue:        parseNum(d.revenue),
-      costo_var:      parseNum(d.costo_var),
-      margen_bruto:   parseNum(d.margen_bruto),
-    })).filter(d => d.producto_id && d.fecha);
+    // Mapa de precios actuales (formulario_precios.html API)
+    const preciosMap = {};
+    if (rPrecios) {
+      try {
+        const pj = await rPrecios.json();
+        (pj.productos || []).forEach(p => { preciosMap[p.producto_id] = p.precio_actual; });
+      } catch(e) { /* silencioso — usa fallback del catálogo */ }
+    }
+
+    // Mapa de costos variables actuales (formulario_costos.html API — directos)
+    const costosVarMap = {};
+    if (rCostosVar) {
+      try {
+        const cj = await rCostosVar.json();
+        // directos: costo fijo por producto; productos: costo calculado desde receta
+        [...(cj.directos || []), ...(cj.productos || [])].forEach(p => {
+          costosVarMap[p.producto_id] = p.costo_actual;
+        });
+      } catch(e) { /* silencioso — usa fallback del catálogo */ }
+    }
+
+    allData = parseCSV(t1).map(d => {
+      const cant    = parseNum(d.cantidad);
+      const cat     = CATALOGO[d.producto_id] || {};
+      // Precio:  API precios (tiempo real) > CSV > catálogo
+      // Costo:   API costos  (tiempo real) > CSV > catálogo
+      const precio  = preciosMap[d.producto_id]   || parseNum(d.precio_unit)    || cat.precio || 0;
+      const costo   = costosVarMap[d.producto_id] || parseNum(d.costo_var_unit) || cat.costo  || 0;
+      const rev     = parseNum(d.revenue)        || cant * precio;
+      const costoV  = parseNum(d.costo_var)      || cant * costo;
+      const margen  = parseNum(d.margen_bruto)   || rev - costoV;
+      return {
+        ...d,
+        nombre:         d.nombre         || cat.nombre || d.producto_id,
+        grupo:          d.grupo          || cat.grupo  || "",
+        cantidad:       cant,
+        precio_unit:    precio,
+        costo_var_unit: costo,
+        revenue:        rev,
+        costo_var:      costoV,
+        margen_bruto:   margen,
+      };
+    }).filter(d => d.producto_id && d.fecha);
 
     // Costos op raw
     costosOpRaw = parseCSV(t3).map(r => ({
