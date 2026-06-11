@@ -437,8 +437,10 @@ function parseNum(s) {
 async function loadData() {
   try {
     // 2 CSV: ventas y costos op raw (URL_COSTOS ya no se usa — costosOp se deriva del raw)
+    const cb = "&_cb=" + Date.now();
     const [r1, r3] = await Promise.all([
-      fetch(URL_DETALLE), fetch(URL_COSTOS_OP_RAW)
+      fetch(URL_DETALLE    + cb, { cache: "no-store" }),
+      fetch(URL_COSTOS_OP_RAW + cb, { cache: "no-store" })
     ]);
     const [t1, t3] = await Promise.all([r1.text(), r3.text()]);
 
