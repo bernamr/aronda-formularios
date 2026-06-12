@@ -381,6 +381,7 @@ input[type=month], input[type=date], input[type=week] {
 const URL_VENTAS        = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTjcsM4Ba3JgwbCRxTJtVL15x14_JkE4pn5RMQ7D6Mjw4lH0mOcx2qFeliMO-1kTHEUoeK9Nuqz2yhR/pub?gid=696584358&single=true&output=csv";
 const URL_COSTOS_OP_RAW = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS_XXRuizm6a2kJ2UDnAEaqlHXGnzGQjnkxq_xy_lmJLzJ2ZNfbWQrYkHtaDN5KRJxmVUbNZmxMIi0P/pub?gid=430128240&single=true&output=csv";
 const URL_PRECIOS_HIST  = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQ7AE4Do_djG74igh12RsuhL38Roz5BxOeG7HUrEwnhDqoQc6A9DSgxth4xGWENQIPfYaSG2cdn7xy/pub?gid=1272108045&single=true&output=csv";
+const URL_COSTOS_HIST   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRtVFmHpnK9oDMuvQpgGDyMU3kwymT98mJgsX6z_Z9RXCyyjnyrfi74eCSvgFsXR-c5EuO7wP7jLo-J/pub?gid=657538714&single=true&output=csv";
 const URL_PRODUCTOS_API  = "https://script.google.com/macros/s/AKfycby9AOVwJa2YdcbxAzpuH3bsbnXqGo-d-K2_9CjK5MsrrLZwQfyfZNK3hOd5UQeMVT04nw/exec";
 const URL_COSTOS_VAR_API = "https://script.google.com/macros/s/AKfycbwCsZMCDwqz9_Leka_V7BKY6Dnw6OZIyQNsF94lYdPTzuVYPK2BU4_3JFoQL3CxHVge/exec";
 
@@ -425,6 +426,22 @@ function splitCSVLine(line) {
   return result;
 }
 
+// Normaliza fecha a YYYY-MM-DD independientemente del formato de entrada
+// Soporta: "2026-06-10" (ISO) y "4/8/2025" o "04/08/2025" (D/M/YYYY locale AR)
+function parseFecha(s) {
+  if (!s) return "";
+  s = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10); // ya es ISO
+  const parts = s.split("/");
+  if (parts.length === 3) {
+    const d = parts[0].padStart(2, "0");
+    const m = parts[1].padStart(2, "0");
+    const y = parts[2].slice(0, 4);
+    return `${y}-${m}-${d}`;
+  }
+  return s.slice(0, 10);
+}
+
 // Parsea números con punto O coma como decimal (locale AR)
 function parseNum(s) {
   if (s === null || s === undefined || s === "") return 0;
@@ -434,18 +451,42 @@ function parseNum(s) {
   return isNaN(v) ? 0 : v;
 }
 
-// ── Lookup temporal de precio ──────────────────────────────────────────────────
-// preciosHist: array de { pid, precio, desde, hasta } cargado en loadData()
-let preciosHist = [];
-function getPrecioHist(pid, fecha) {
-  // fecha: string "YYYY-MM-DD"  |  desde <= fecha < hasta  (hasta vacío = vigente)
-  for (const r of preciosHist) {
+// ── Lookup temporal de precio y costo ─────────────────────────────────────────
+// Ambos arrays cargados en loadData(). Condición: desde <= fecha < hasta
+let preciosHist = [], costosHist = [];
+function _lookupHist(arr, pid, fecha) {
+  for (const r of arr) {
     if (r.pid !== pid) continue;
     if (r.desde > fecha) continue;
     if (r.hasta && r.hasta <= fecha) continue;
-    return r.precio;
+    return r.valor;
   }
   return 0;
+}
+const getPrecioHist = (pid, fecha) => _lookupHist(preciosHist, pid, fecha);
+const getCostoHist  = (pid, fecha) => _lookupHist(costosHist,  pid, fecha);
+
+// ── Costo variable unitario histórico ─────────────────────────────────────────
+// Orden: insumo_ref directo → costo directo histórico → receta vigente a la fecha.
+// Receta: sum(cantidad_usada × precio_insumo(fecha) / factor_conversion).
+// Las recetas tienen vigente_desde/vigente_hasta (vacío = sin versionar / vigente).
+let recetasMap = {}, factorMap = {}, insumoRefMap = {};
+function costoVarHist(pid, fecha) {
+  if (insumoRefMap[pid]) {
+    const c = getCostoHist(insumoRefMap[pid], fecha);
+    if (c) return c;
+  }
+  const cd = getCostoHist(pid, fecha);
+  if (cd) return cd;
+  const ings = (recetasMap[pid] || []).filter(g =>
+    (!g.desde || g.desde <= fecha) && (!g.hasta || g.hasta > fecha));
+  let total = 0;
+  ings.forEach(g => {
+    const prec = getCostoHist(g.insumo_id, fecha);
+    const fac  = factorMap[g.insumo_id] || 1;
+    if (prec) total += g.cantidad * prec / fac;
+  });
+  return total;
 }
 
 // ── Carga de datos ──────────────────────────────────────────────────────────────
@@ -454,54 +495,69 @@ async function loadData() {
     const cb = "&_cb=" + Date.now();
     const t  = Date.now();
 
-    // Todo en paralelo: ventas, costos op, historial precios, costos var, productos
-    const [rVentas, rCostosOp, rPreciosHist, rCostosVar, rProductos] = await Promise.all([
-      fetch(URL_VENTAS        + cb, { cache: "no-store" }),
+    // Todo en paralelo: ventas, costos op, historial precios, historial costos, productos
+    const [rVentas, rCostosOp, rPreciosHist, rCostosHist, rProductos] = await Promise.all([
+      fetch(URL_VENTAS       + cb, { cache: "no-store" }),
       fetch(URL_COSTOS_OP_RAW + cb, { cache: "no-store" }),
       fetch(URL_PRECIOS_HIST  + cb, { cache: "no-store" }),
-      fetch(URL_COSTOS_VAR_API + "?t=" + t).catch(() => null),
-      fetch(URL_PRODUCTOS_API  + "?t=" + t).catch(() => null)
+      fetch(URL_COSTOS_HIST   + cb, { cache: "no-store" }),
+      fetch(URL_PRODUCTOS_API + "?t=" + t).catch(() => null)
     ]);
-    const [tVentas, tCostosOp, tPreciosHist] = await Promise.all([
-      rVentas.text(), rCostosOp.text(), rPreciosHist.text()
+    const [tVentas, tCostosOp, tPreciosHist, tCostosHist] = await Promise.all([
+      rVentas.text(), rCostosOp.text(), rPreciosHist.text(), rCostosHist.text()
     ]);
 
-    // Historial de precios con rangos de fechas
+    // Historial de precios
     preciosHist = parseCSV(tPreciosHist).map(r => ({
       pid:   r.producto_id,
-      precio: parseNum(r.precio_prod),
-      desde:  (r.precio_vigente_desde || "").slice(0, 10),
-      hasta:  (r.precio_vigente_hasta || "").slice(0, 10) || null,
-    })).filter(r => r.pid && r.precio);
+      valor: parseNum(r.precio_prod),
+      desde: (r.precio_vigente_desde || "").slice(0, 10),
+      hasta: (r.precio_vigente_hasta || "").slice(0, 10) || null,
+    })).filter(r => r.pid && r.valor);
 
-    // Mapa de costos variables actuales (directos + recetas si las hay)
-    const costosVarMap = {};
-    if (rCostosVar) {
-      try {
-        const cj = await rCostosVar.json();
-        [...(cj.directos || []), ...(cj.productos || [])].forEach(p => {
-          costosVarMap[p.producto_id] = p.costo_actual;
-        });
-      } catch(e) {}
-    }
+    // Historial de costos (columnas: tipo, id, costo, vigente_desde, vigente_hasta)
+    costosHist = parseCSV(tCostosHist).map(r => ({
+      pid:   r.id,
+      valor: parseNum(r.costo),
+      desde: (r.vigente_desde || "").slice(0, 10),
+      hasta: (r.vigente_hasta || "").slice(0, 10) || null,
+    })).filter(r => r.pid && r.valor);
 
-    // Mapa de nombre + grupo desde catálogo de productos
+    // Mapa de nombre + grupo desde catálogo de productos + recetas e insumos
     const prodMap = {};
+    recetasMap = {}; factorMap = {}; insumoRefMap = {};
     if (rProductos) {
       try {
         const pj = await rProductos.json();
         (pj.productos || []).forEach(p => {
           prodMap[p.producto_id] = { nombre: p.nombre, grupo: p.grupo };
+          if (p.insumo_ref) insumoRefMap[p.producto_id] = String(p.insumo_ref).trim();
+        });
+        // Los números del API llegan como number en JSON — no pasarlos por parseNum
+        const num = v => typeof v === "number" ? v : parseNum(v);
+        (pj.recetas || []).forEach(r => {
+          const pid = String(r.producto_id || "").trim();
+          if (!pid) return;
+          (recetasMap[pid] = recetasMap[pid] || []).push({
+            insumo_id: String(r.insumo_id || "").trim(),
+            cantidad:  num(r.cantidad_usada),
+            desde:     String(r.vigente_desde || "").slice(0, 10),
+            hasta:     String(r.vigente_hasta || "").slice(0, 10),
+          });
+        });
+        (pj.insumos || []).forEach(i => {
+          const f = num(i.factor_conversion);
+          if (i.insumo_id && f > 0) factorMap[String(i.insumo_id).trim()] = f;
         });
       } catch(e) {}
     }
 
     allData = parseCSV(tVentas).map(d => {
       const cant   = parseNum(d.cantidad);
-      const fecha  = (d.fecha || "").slice(0, 10);
+      const fecha  = parseFecha(d.fecha);
       const prod   = prodMap[d.producto_id] || {};
       const precio = getPrecioHist(d.producto_id, fecha) || 0;
-      const costo  = costosVarMap[d.producto_id] || 0;
+      const costo  = costoVarHist(d.producto_id, fecha) || 0;
       const rev    = cant * precio;
       const costoV = cant * costo;
       return {
@@ -519,9 +575,9 @@ async function loadData() {
     }).filter(d => d.producto_id && d.fecha);
 
     // Costos op raw
-    costosOpRaw = parseCSV(tCostosOp).map(r => ({
+    costosOpRaw = dedupSueldos(parseCSV(tCostosOp).map(r => ({
       ...r, monto: parseNum(r.monto) || 0
-    })).filter(r => r.fecha && r.concepto && r.monto > 0);
+    })).filter(r => r.fecha && r.concepto && r.monto > 0));
 
     // Construir costosOp desde raw (suma de montos por fecha)
     // Esto hace que Rentabilidad y Márgenes estén siempre en sync con el sheet raw
@@ -1548,6 +1604,40 @@ function refreshDash() {
     btn.textContent = "↺ Actualizar";
     btn.disabled = false;
   });
+}
+
+// ── Dedup de sueldos (rooster) ─────────────────────────────────────────────────
+// La sheet CostosOp es append-only: un mismo sueldo (empleada+semana) puede tener
+// varios registros (estimado al armar el rooster, real al pagar, anulado al
+// desmarcar, o duplicados legacy). Acá se queda uno solo por empleada+semana:
+//   1. el último "real" (si no fue anulado después),
+//   2. si no, el último "estimado",
+//   3. registros legacy (sin estado): el último por clave del comentario.
+function dedupSueldos(rows) {
+  const out = [], grupos = {};
+  rows.forEach(r => {
+    let clave = null;
+    if (r.empleada && r.semana_inicio) {
+      clave = r.empleada + "|" + r.semana_inicio;
+    } else if ((r.concepto || "").toLowerCase() === "sueldos" && r.comentario) {
+      const m = r.comentario.match(/^(.+?) — semana (\d{4}-\d{2}-\d{2})/);
+      if (m) clave = m[1] + "|" + m[2];
+    }
+    if (!clave) { out.push(r); return; }
+    (grupos[clave] = grupos[clave] || []).push(r);
+  });
+  Object.values(grupos).forEach(g => {
+    g.sort((a, b) => (a.timestamp || "") < (b.timestamp || "") ? -1 : 1);
+    const est = s => (s.estado || "").toLowerCase();
+    // Último evento de pago (real o anulado) decide
+    const pagos = g.filter(r => est(r) === "real" || est(r) === "anulado" || est(r) === "");
+    const ultimoPago = pagos[pagos.length - 1];
+    if (ultimoPago && est(ultimoPago) !== "anulado") { out.push(ultimoPago); return; }
+    // Sin pago vigente → último estimado
+    const estimados = g.filter(r => est(r) === "estimado");
+    if (estimados.length) out.push(estimados[estimados.length - 1]);
+  });
+  return out;
 }
 
 // Arrancar

@@ -512,9 +512,12 @@ async function cargarGestion() {
     const res = await fetch(PRODUCTOS_SCRIPT_URL + "?t=" + Date.now());
     const d   = await res.json();
     todosProductos = d.productos || [];
+    todasRecetas   = d.recetas || [];
     renderGestion();
     // Cargar insumos desde CSV separado
     await cargarInsumos();
+    // Fallback: si el CSV falló, usar los insumos del API
+    if (!insumosDisponibles.length && (d.insumos || []).length) poblarSelectorInsumos(d.insumos);
   } catch(e) {
     document.getElementById("lista-gestion").innerHTML =
       '<div style="text-align:center;padding:20px;color:#aaa">❌ Error al cargar</div>';
@@ -535,6 +538,10 @@ function renderGestion() {
           <div style="font-size:0.7rem;color:#aaa">${p.producto_id} · ${p.tipo_costo||''}</div>
         </div>
         <div style="display:flex;gap:6px">
+          ${(p.tipo_costo === "receta") ? `<button data-pid="${p.producto_id}" onclick="editarReceta(this.getAttribute('data-pid'))"
+            style="padding:7px 10px;border:2px solid #1a3a2c;border-radius:8px;background:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;color:#1a3a2c">
+            🧾 Receta
+          </button>` : ""}
           <button data-pid="${p.producto_id}" data-activo="${activo}"
             onclick="toggleProducto(this)"
             style="padding:7px 10px;border:2px solid ${activo?'#c0392b':'#1a3a2c'};border-radius:8px;background:#fff;font-size:0.75rem;font-weight:700;cursor:pointer;color:${activo?'#c0392b':'#1a3a2c'}">
@@ -578,14 +585,9 @@ async function agregarProducto() {
     })
   });
 
-  // 2. Si tiene receta → enviar directo a Aronda_Recetas
-  if (tipoCosto === "receta" && recetaActual.length > 0) {
-    await fetch(RECETAS_SCRIPT_URL, {
-      method:"POST", mode:"no-cors",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ producto_id, receta: recetaActual })
-    });
-  }
+  // NOTA: antes acá se posteaba también a RECETAS_SCRIPT_URL, pero el Apps Script
+  // de Productos ya escribe la receta en el maestro Aronda_Recetas → quedaba
+  // duplicada (y duplicaba el costo). Se eliminó ese segundo POST.
 
   // El precio inicial se registra en el mismo request al Apps Script de Productos
 
@@ -633,6 +635,136 @@ async function reactivar(id) {
     body: JSON.stringify({action:"reactivate", producto_id:id})
   });
   showToast("Producto activado");
+  setTimeout(() => cargarGestion(), 1500);
+}
+
+// ── Edición de recetas con historial de vigencia ───────────────────────────────
+// Al guardar: el Apps Script cierra la versión vigente (vigente_hasta = hoy) y
+// agrega la nueva (vigente_desde = hoy). El margen histórico no se reescribe:
+// cada venta usa la receta vigente a su fecha.
+let todasRecetas = [];
+let recetaEdit = [];
+let recetaEditPid = null;
+
+function asegurarModalReceta() {
+  if (document.getElementById("modal-receta")) return;
+  document.body.insertAdjacentHTML("beforeend", `
+  <div id="modal-receta" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;padding:16px">
+    <div style="background:#faf7f2;border-radius:16px;max-width:440px;width:100%;max-height:85vh;overflow-y:auto;padding:20px">
+      <div style="font-weight:800;font-size:1rem;margin-bottom:2px" id="mr-titulo">Editar receta</div>
+      <div style="font-size:0.7rem;color:#999;margin-bottom:12px">Los cambios rigen desde hoy; el historial de márgenes anteriores se conserva.</div>
+      <div id="mr-lista"></div>
+      <div style="display:flex;gap:6px;margin-top:12px">
+        <select id="mr-insumo-sel" style="flex:2;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.8rem;background:#fff">
+          <option value="">— Agregar insumo —</option>
+        </select>
+        <input type="number" id="mr-cantidad" placeholder="Cant." step="any" min="0"
+          style="flex:1;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:0.8rem">
+        <button onclick="agregarIngredienteEdit()"
+          style="padding:9px 12px;border:none;border-radius:8px;background:#1a3a2c;color:#fff;font-weight:700;cursor:pointer">+</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button onclick="cerrarModalReceta()"
+          style="flex:1;padding:11px;border:2px solid #ccc;border-radius:10px;background:#fff;font-weight:700;cursor:pointer;color:#666">Cancelar</button>
+        <button onclick="guardarRecetaEdit()" id="mr-guardar"
+          style="flex:2;padding:11px;border:none;border-radius:10px;background:#1a3a2c;color:#fff;font-weight:700;cursor:pointer">💾 Guardar receta</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+function nombreInsumo(iid) {
+  const ins = insumosDisponibles.find(i => i.insumo_id === iid);
+  return ins?.nombre || iid;
+}
+
+function recetaVigente(pid) {
+  return todasRecetas.filter(r =>
+    r.producto_id === pid && !String(r.vigente_hasta || "").trim());
+}
+
+function editarReceta(pid) {
+  asegurarModalReceta();
+  recetaEditPid = pid;
+  recetaEdit = recetaVigente(pid).map(r => ({
+    insumo_id: r.insumo_id,
+    cantidad:  typeof r.cantidad_usada === "number" ? r.cantidad_usada : parseFloat(r.cantidad_usada) || 0,
+    unidad:    r.unidad_usada || "u",
+  }));
+  const prod = todosProductos.find(p => p.producto_id === pid);
+  document.getElementById("mr-titulo").textContent = "🧾 Receta — " + (prod?.nombre || pid);
+  // Poblar selector de insumos
+  const sel = document.getElementById("mr-insumo-sel");
+  sel.innerHTML = '<option value="">— Agregar insumo —</option>';
+  insumosDisponibles.forEach(ins => {
+    const opt = document.createElement("option");
+    opt.value = ins.insumo_id;
+    opt.textContent = `${ins.nombre} (${ins.insumo_id})`;
+    sel.appendChild(opt);
+  });
+  renderRecetaEdit();
+  document.getElementById("modal-receta").style.display = "flex";
+}
+
+function renderRecetaEdit() {
+  const lista = document.getElementById("mr-lista");
+  if (!recetaEdit.length) {
+    lista.innerHTML = '<div style="text-align:center;color:#aaa;font-size:0.8rem;padding:12px">Sin ingredientes</div>';
+    return;
+  }
+  lista.innerHTML = recetaEdit.map((ing, i) => `
+    <div style="display:flex;align-items:center;background:#fff;border-radius:8px;padding:8px 12px;margin:4px 0;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,0.06)">
+      <div style="flex:1;font-size:0.85rem"><b>${nombreInsumo(ing.insumo_id)}</b></div>
+      <input type="number" value="${ing.cantidad}" step="any" min="0"
+        onchange="recetaEdit[${i}].cantidad = parseFloat(this.value) || 0"
+        style="width:70px;padding:6px;border:1.5px solid #ddd;border-radius:6px;font-size:0.8rem;text-align:right">
+      <span style="font-size:0.75rem;color:#aaa;width:30px">${ing.unidad}</span>
+      <button onclick="quitarIngredienteEdit(${i})"
+        style="border:none;background:none;color:#c0392b;font-size:1.1rem;cursor:pointer">✕</button>
+    </div>`).join("");
+}
+
+function agregarIngredienteEdit() {
+  const sel  = document.getElementById("mr-insumo-sel").value;
+  const cant = parseFloat(document.getElementById("mr-cantidad").value);
+  if (!sel || !cant) { showToast("Seleccioná insumo y cantidad", true); return; }
+  if (recetaEdit.some(i => i.insumo_id === sel)) { showToast("Ese insumo ya está en la receta", true); return; }
+  const ins = insumosDisponibles.find(i => i.insumo_id === sel);
+  recetaEdit.push({ insumo_id: sel, cantidad: cant, unidad: ins?.unidad_base || "u" });
+  document.getElementById("mr-insumo-sel").value = "";
+  document.getElementById("mr-cantidad").value = "";
+  renderRecetaEdit();
+}
+
+function quitarIngredienteEdit(i) {
+  recetaEdit.splice(i, 1);
+  renderRecetaEdit();
+}
+
+function cerrarModalReceta() {
+  document.getElementById("modal-receta").style.display = "none";
+  recetaEdit = []; recetaEditPid = null;
+}
+
+async function guardarRecetaEdit() {
+  if (!recetaEdit.length) { showToast("La receta no puede quedar vacía", true); return; }
+  if (recetaEdit.some(i => !i.cantidad || i.cantidad <= 0)) { showToast("Hay cantidades en cero", true); return; }
+  const hoy = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
+  const btn = document.getElementById("mr-guardar");
+  btn.disabled = true; btn.textContent = "Guardando…";
+  await fetch(PRODUCTOS_SCRIPT_URL, {
+    method:"POST", mode:"no-cors",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      action: "edit_receta",
+      producto_id: recetaEditPid,
+      fecha: hoy,
+      receta: recetaEdit
+    })
+  });
+  btn.disabled = false; btn.textContent = "💾 Guardar receta";
+  showToast("✅ Receta actualizada (vigente desde hoy)");
+  cerrarModalReceta();
   setTimeout(() => cargarGestion(), 1500);
 }
 </script>

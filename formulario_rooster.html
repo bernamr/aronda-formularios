@@ -656,6 +656,34 @@ async function guardarRoster() {
   generarPagosSemana(turnos);
 }
 
+// ── Sueldos → Costos Operativos ────────────────────────────────────────────────
+// El registro se hace con fecha = domingo (fin) de la semana del rooster, así el
+// costo impacta en esa semana (lun-dom) sin importar qué día se registre.
+// estado: "estimado" (al guardar rooster) | "real" (al pagar) | "anulado" (desmarcar pago).
+// La sheet es append-only: el dashboard toma el último registro por empleada+semana.
+function finDeSemana(semanaInicio) {
+  const d = new Date(semanaInicio + "T12:00:00");
+  d.setDate(d.getDate() + 6);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+async function postSueldoCostosOp(p, estado) {
+  await fetch(COSTOS_OP_URL, {
+    method:"POST", mode:"no-cors",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      fecha:         finDeSemana(p.semana_inicio),
+      concepto:      "sueldos",
+      frecuencia:    "semanal",
+      monto:         +p.monto,
+      comentario:    `${p.empleada} — semana ${p.semana_inicio} (${estado})`,
+      empleada:      p.empleada,
+      semana_inicio: p.semana_inicio,
+      estado:        estado
+    })
+  });
+}
+
 function generarPagosSemana(turnos) {
   const hM  = timeToHours(document.getElementById("cfg-m-fin").value)  - timeToHours(document.getElementById("cfg-m-ini").value);
   const hT  = timeToHours(document.getElementById("cfg-t-fin").value)  - timeToHours(document.getElementById("cfg-t-ini").value);
@@ -701,6 +729,10 @@ function generarPagosSemana(turnos) {
         fecha_pago: ""
       })
     });
+
+    // Impacto inmediato: registrar sueldo estimado en Costos Operativos.
+    // Cuando se marque "Pagado" se registra el real, que pisa este estimado.
+    await postSueldoCostosOp({ semana_inicio: semanaInicio, empleada: emp, monto }, "estimado");
 
     // Actualizar cache local
     if (existente) {
@@ -843,21 +875,9 @@ async function togglePago(idx) {
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({action:"save_pago", ...p})});
 
-  // Si se marca como pagado → registrar en Costos Operativos
-  if (p.estado === "pagado") {
-    const hoy = (() => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; })();
-    await fetch(COSTOS_OP_URL, {
-      method:"POST", mode:"no-cors",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        fecha:     hoy,
-        concepto:  "sueldos",
-        frecuencia:"semanal",
-        monto:     +p.monto,
-        comentario: `${p.empleada} — semana ${p.semana_inicio}`
-      })
-    });
-  }
+  // Pagado → registrar sueldo "real" en Costos Operativos (pisa al estimado).
+  // Desmarcado → registrar "anulado" (vuelve a regir el estimado, si existe).
+  await postSueldoCostosOp(p, p.estado === "pagado" ? "real" : "anulado");
 
   // Actualizar local
   const orig = todosPagos.find(x => x.semana_inicio===p.semana_inicio && x.empleada===p.empleada);
