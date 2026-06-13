@@ -201,6 +201,19 @@ input[type=month], input[type=date], input[type=week] {
     </select>
     <div id="chips-producto" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
   </div>
+  <div class="filter-row">
+    <span class="filter-label">Día</span>
+    <div class="btn-group">
+      <button class="fbtn fbtn-dia active" data-v="todos" onclick="setFilter('diasem','todos')">Todos</button>
+      <button class="fbtn fbtn-dia" data-v="1" onclick="setFilter('diasem','1')">Lun</button>
+      <button class="fbtn fbtn-dia" data-v="2" onclick="setFilter('diasem','2')">Mar</button>
+      <button class="fbtn fbtn-dia" data-v="3" onclick="setFilter('diasem','3')">Mié</button>
+      <button class="fbtn fbtn-dia" data-v="4" onclick="setFilter('diasem','4')">Jue</button>
+      <button class="fbtn fbtn-dia" data-v="5" onclick="setFilter('diasem','5')">Vie</button>
+      <button class="fbtn fbtn-dia" data-v="6" onclick="setFilter('diasem','6')">Sáb</button>
+      <button class="fbtn fbtn-dia" data-v="0" onclick="setFilter('diasem','0')">Dom</button>
+    </div>
+  </div>
 </div>
 
 <!-- TABS -->
@@ -327,6 +340,10 @@ input[type=month], input[type=date], input[type=week] {
     <div class="chart-title">Rentabilidad mensual</div>
     <div class="chart-wrap"><canvas id="chart-rent-evol"></canvas></div>
   </div>
+  <div class="chart-card">
+    <div class="chart-title">Facturación y margen bruto por día de la semana <span style="font-weight:400;font-size:0.65rem;text-transform:none;color:var(--muted)">· promedio por día</span></div>
+    <div class="chart-wrap"><canvas id="chart-dia-semana"></canvas></div>
+  </div>
 </div>
 
 <!-- MÁRGENES -->
@@ -394,7 +411,7 @@ const URL_ROOSTER_API    = "https://script.google.com/macros/s/AKfycbwOCDvZWTQUK
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 let allData = [], costosOp = {}, costosOpRaw = [], charts = {};
-let period = "mes", filters = { turno: "todos", empleada: "todos", productos: [], grupos: [], concepto: "todos" };
+let period = "mes", filters = { turno: "todos", empleada: "todos", productos: [], grupos: [], concepto: "todos", dias: [] };
 const now = new Date();
 
 // Inicializar pickers
@@ -579,6 +596,7 @@ async function loadData() {
         revenue:        rev,
         costo_var:      costoV,
         margen_bruto:   rev - costoV,
+        dow:            fecha ? new Date(fecha + "T12:00:00").getDay() : -1, // 0=dom … 6=sáb
       };
     }).filter(d => d.producto_id && d.fecha);
 
@@ -691,6 +709,16 @@ function setFilter(key, val) {
     _refreshProductoChips();
     render(); return;
   }
+  if (key === "diasem") {
+    if (val === "todos") { filters.dias = []; }
+    else {
+      const n = Number(val);
+      const idx = filters.dias.indexOf(n);
+      if (idx >= 0) filters.dias.splice(idx, 1); else filters.dias.push(n);
+    }
+    _refreshDiaButtons();
+    render(); return;
+  }
   filters[key] = val;
   const groupMap = { turno: 1, empleada: 2 };
   if (groupMap[key] !== undefined) {
@@ -708,6 +736,14 @@ function _refreshGrupoButtons() {
     const v = b.dataset.v;
     const isActive = v === "todos" ? filters.grupos.length === 0 : filters.grupos.includes(v);
     b.className = "fbtn fbtn-grupo" + (isActive ? " active" : "");
+  });
+}
+
+function _refreshDiaButtons() {
+  document.querySelectorAll(".fbtn-dia").forEach(b => {
+    const v = b.dataset.v;
+    const isActive = v === "todos" ? filters.dias.length === 0 : filters.dias.includes(Number(v));
+    b.className = "fbtn fbtn-dia" + (isActive ? " active" : "");
   });
 }
 
@@ -731,6 +767,7 @@ function getFilteredDataSinPeriodo() {
     if (filters.empleada !== "todos" && d.empleada !== filters.empleada) return false;
     if (filters.productos.length > 0 && !filters.productos.includes(d.nombre)) return false;
     if (filters.grupos.length    > 0 && !filters.grupos.includes(d.grupo))     return false;
+    if (filters.dias.length      > 0 && !filters.dias.includes(d.dow))         return false;
     return true;
   });
 }
@@ -760,6 +797,7 @@ function getFilteredData() {
     // Producto / Grupo (multiselect)
     if (filters.productos.length > 0 && !filters.productos.includes(d.nombre)) return false;
     if (filters.grupos.length    > 0 && !filters.grupos.includes(d.grupo))     return false;
+    if (filters.dias.length      > 0 && !filters.dias.includes(d.dow))         return false;
     return true;
   });
 }
@@ -869,6 +907,7 @@ function render() {
   renderVentas(data);
   renderFacturacion(data);
   renderRentabilidad(data, costoOp);
+  renderDiaSemana();
   renderCostosOp();
   // Gráficos de márgenes solo si el tab está visible
   const margenTabVisible = document.getElementById("tab-detalle").classList.contains("active");
@@ -1208,6 +1247,44 @@ function renderRentabilidad(data, costoOp) {
     return v.revenue - v.costo_var - v.costo_op;
   });
   drawLine("chart-rent-evol", meses, rentMes, "Rentabilidad $", "#316046");
+}
+
+// ── VENTAS / RENTABILIDAD POR DÍA DE LA SEMANA ──────────────────────────────────
+// Compara los días (Lun…Dom) en facturación y margen bruto, como PROMEDIO por día
+// (suma del día de semana / cantidad de fechas distintas de ese día). Respeta los
+// filtros de turno/empleada/producto/grupo/día, pero no el período (patrón histórico).
+function renderDiaSemana() {
+  const id = "chart-dia-semana";
+  if (!document.getElementById(id)) return;
+  const data = getFilteredDataSinPeriodo();
+  const order = [1,2,3,4,5,6,0];
+  const names = {1:"Lun",2:"Mar",3:"Mié",4:"Jue",5:"Vie",6:"Sáb",0:"Dom"};
+  const agg = {}, fechas = {};
+  order.forEach(k => { agg[k] = {rev:0, mb:0}; fechas[k] = new Set(); });
+  data.forEach(d => {
+    if (!agg[d.dow]) return;
+    agg[d.dow].rev += d.revenue;
+    agg[d.dow].mb  += d.margen_bruto;
+    fechas[d.dow].add(d.fecha);
+  });
+  const labels = order.map(k => names[k]);
+  const fact   = order.map(k => { const n = fechas[k].size; return n ? Math.round(agg[k].rev / n) : 0; });
+  const margen = order.map(k => { const n = fechas[k].size; return n ? Math.round(agg[k].mb  / n) : 0; });
+
+  destroyChart(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  charts[id] = new Chart(ctx, {
+    type: "bar",
+    data: { labels, datasets: [
+      { label: "Facturación prom/día", data: fact,   backgroundColor: "#316046cc", borderRadius: 3 },
+      { label: "Margen bruto prom/día", data: margen, backgroundColor: "#DD704Acc", borderRadius: 3 }
+    ]},
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { font: { size: 11 } } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ": " + fmt$(c.parsed.y) } } },
+      scales: { x: { ticks: { font: { size: 11 } } },
+                y: { ticks: { font: { size: 10 }, callback: v => "$" + (v/1000) + "k" } } } }
+  });
 }
 
 // ── MARGEN ────────────────────────────────────────────────────────────────────
