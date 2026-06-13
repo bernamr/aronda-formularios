@@ -264,6 +264,9 @@ input[type=month], input[type=date], input[type=week] {
     <div class="kpi"><div class="kpi-label">Productos distintos</div><div class="kpi-value" id="v-productos">—</div></div>
     <div class="kpi"><div class="kpi-label">Turno más activo</div><div class="kpi-value" id="v-turno">—</div></div>
     <div class="kpi"><div class="kpi-label">Top producto</div><div class="kpi-value" id="v-top" style="font-size:1rem">—</div></div>
+    <div class="kpi"><div class="kpi-label">☕ Café consumido</div><div class="kpi-value" id="v-cafe-total">—</div><div class="kpi-sub" id="v-cafe-total-sub"></div></div>
+    <div class="kpi"><div class="kpi-label">☕ Café promedio diario</div><div class="kpi-value" id="v-cafe-dia">—</div></div>
+    <div class="kpi"><div class="kpi-label">Cafés + combos prom/día</div><div class="kpi-value" id="v-cafecombos-dia">—</div><div class="kpi-sub" id="v-cafecombos-sub"></div></div>
   </div>
   <!-- BE PROGRESS -->
   <div class="chart-card">
@@ -577,6 +580,14 @@ async function loadData() {
       } catch(e) {}
     }
 
+    // Gramos de café (INS-CF) por unidad de cada producto, según receta vigente.
+    // cantidad_usada del café ya está en gramos (unidad_base = gr).
+    const cafeGrMap = {};
+    Object.entries(recetasMap).forEach(([pid, ings]) => {
+      cafeGrMap[pid] = ings.filter(g => g.insumo_id === "INS-CF")
+                           .reduce((s,g) => s + (g.cantidad || 0), 0);
+    });
+
     allData = parseCSV(tVentas).map(d => {
       const cant   = parseNum(d.cantidad);
       const fecha  = parseFecha(d.fecha);
@@ -597,6 +608,7 @@ async function loadData() {
         costo_var:      costoV,
         margen_bruto:   rev - costoV,
         dow:            fecha ? new Date(fecha + "T12:00:00").getDay() : -1, // 0=dom … 6=sáb
+        cafe_gr:        cant * (cafeGrMap[d.producto_id] || 0), // gramos de café consumidos
       };
     }).filter(d => d.producto_id && d.fecha);
 
@@ -897,6 +909,10 @@ function getWeekNumber(d) {
 // ── Formato ──────────────────────────────────────────────────────────────────
 function fmt$  (n) { return "$" + Math.round(n).toLocaleString("es-AR"); }
 function fmtPct(n) { return (n*100).toFixed(1) + "%"; }
+function fmtPeso(g) { // gramos → "X,X kg" si ≥1000, si no "X g"
+  if (g >= 1000) return (g/1000).toLocaleString("es-AR",{minimumFractionDigits:1,maximumFractionDigits:1}) + " kg";
+  return Math.round(g).toLocaleString("es-AR") + " g";
+}
 
 // ── Render principal ──────────────────────────────────────────────────────────
 function render() {
@@ -934,6 +950,19 @@ function renderVentas(data) {
   document.getElementById("v-productos").textContent = prods;
   document.getElementById("v-turno").textContent = topTurno ? (topTurno[0]==="manana"?"☀️ Mañana":"🌙 Tarde") : "—";
   document.getElementById("v-top").textContent = topProd ? topProd[0] : "—";
+
+  // ── Consumo de café (kg/gr) y promedio cafés+combos por día ──────────────
+  const diasConVenta = new Set(data.map(d => d.fecha)).size || 1;
+  const cafeGr = data.reduce((s,d) => s + (d.cafe_gr || 0), 0);
+  document.getElementById("v-cafe-total").textContent     = fmtPeso(cafeGr);
+  document.getElementById("v-cafe-total-sub").textContent = "en " + diasConVenta + " días";
+  document.getElementById("v-cafe-dia").textContent       = fmtPeso(cafeGr / diasConVenta) + "/día";
+
+  // Cafés (Mediano/Grande/Chico) + Combos: promedio de unidades por día
+  const esCafeCombo = d => ["Café Mediano","Café Grande","Café Chico"].includes(d.nombre) || d.grupo === "Combos";
+  const ccUnidades = data.filter(esCafeCombo).reduce((s,d) => s + d.cantidad, 0);
+  document.getElementById("v-cafecombos-dia").textContent = (ccUnidades / diasConVenta).toFixed(1) + " u/día";
+  document.getElementById("v-cafecombos-sub").textContent = ccUnidades.toLocaleString("es-AR") + " uds total";
 
   // Chart por producto
   const prodData = Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,10);
