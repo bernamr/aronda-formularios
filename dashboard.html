@@ -384,6 +384,9 @@ const URL_PRECIOS_HIST  = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSQ7A
 const URL_COSTOS_HIST   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRtVFmHpnK9oDMuvQpgGDyMU3kwymT98mJgsX6z_Z9RXCyyjnyrfi74eCSvgFsXR-c5EuO7wP7jLo-J/pub?gid=657538714&single=true&output=csv";
 const URL_PRODUCTOS_API  = "https://script.google.com/macros/s/AKfycby9AOVwJa2YdcbxAzpuH3bsbnXqGo-d-K2_9CjK5MsrrLZwQfyfZNK3hOd5UQeMVT04nw/exec";
 const URL_COSTOS_VAR_API = "https://script.google.com/macros/s/AKfycbwCsZMCDwqz9_Leka_V7BKY6Dnw6OZIyQNsF94lYdPTzuVYPK2BU4_3JFoQL3CxHVge/exec";
+// Rooster: fuente de verdad de los sueldos (hoja Pagos). El dashboard arma el costo
+// semanal de sueldos desde acá (pendiente o pagado), sin depender del espejo en CostosOp.
+const URL_ROOSTER_API    = "https://script.google.com/macros/s/AKfycbwOCDvZWTQUKmdPTsYnMXoC5Q4gGHGMOAcn5MCazLneVUH4Oe78bXSo4-Ga6VVpzG6-pA/exec";
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 let allData = [], costosOp = {}, costosOpRaw = [], charts = {};
@@ -495,32 +498,33 @@ async function loadData() {
     const cb = "&_cb=" + Date.now();
     const t  = Date.now();
 
-    // Todo en paralelo: ventas, costos op, historial precios, historial costos, productos
-    const [rVentas, rCostosOp, rPreciosHist, rCostosHist, rProductos] = await Promise.all([
+    // Todo en paralelo: ventas, costos op, historial precios, historial costos, productos, rooster
+    const [rVentas, rCostosOp, rPreciosHist, rCostosHist, rProductos, rRooster] = await Promise.all([
       fetch(URL_VENTAS       + cb, { cache: "no-store" }),
       fetch(URL_COSTOS_OP_RAW + cb, { cache: "no-store" }),
       fetch(URL_PRECIOS_HIST  + cb, { cache: "no-store" }),
       fetch(URL_COSTOS_HIST   + cb, { cache: "no-store" }),
-      fetch(URL_PRODUCTOS_API + "?t=" + t).catch(() => null)
+      fetch(URL_PRODUCTOS_API + "?t=" + t).catch(() => null),
+      fetch(URL_ROOSTER_API   + "?t=" + t).catch(() => null)
     ]);
     const [tVentas, tCostosOp, tPreciosHist, tCostosHist] = await Promise.all([
       rVentas.text(), rCostosOp.text(), rPreciosHist.text(), rCostosHist.text()
     ]);
 
-    // Historial de precios
+    // Historial de precios — fechas normalizadas a ISO (pueden venir D/M/AAAA)
     preciosHist = parseCSV(tPreciosHist).map(r => ({
       pid:   r.producto_id,
       valor: parseNum(r.precio_prod),
-      desde: (r.precio_vigente_desde || "").slice(0, 10),
-      hasta: (r.precio_vigente_hasta || "").slice(0, 10) || null,
+      desde: parseFecha(r.precio_vigente_desde),
+      hasta: parseFecha(r.precio_vigente_hasta) || null,
     })).filter(r => r.pid && r.valor);
 
     // Historial de costos (columnas: tipo, id, costo, vigente_desde, vigente_hasta)
     costosHist = parseCSV(tCostosHist).map(r => ({
       pid:   r.id,
       valor: parseNum(r.costo),
-      desde: (r.vigente_desde || "").slice(0, 10),
-      hasta: (r.vigente_hasta || "").slice(0, 10) || null,
+      desde: parseFecha(r.vigente_desde),
+      hasta: parseFecha(r.vigente_hasta) || null,
     })).filter(r => r.pid && r.valor);
 
     // Mapa de nombre + grupo desde catálogo de productos + recetas e insumos
@@ -541,8 +545,8 @@ async function loadData() {
           (recetasMap[pid] = recetasMap[pid] || []).push({
             insumo_id: String(r.insumo_id || "").trim(),
             cantidad:  num(r.cantidad_usada),
-            desde:     String(r.vigente_desde || "").slice(0, 10),
-            hasta:     String(r.vigente_hasta || "").slice(0, 10),
+            desde:     parseFecha(r.vigente_desde),
+            hasta:     parseFecha(r.vigente_hasta),
           });
         });
         (pj.insumos || []).forEach(i => {
@@ -574,10 +578,23 @@ async function loadData() {
       };
     }).filter(d => d.producto_id && d.fecha);
 
-    // Costos op raw
-    costosOpRaw = dedupSueldos(parseCSV(tCostosOp).map(r => ({
-      ...r, monto: parseNum(r.monto) || 0
-    })).filter(r => r.fecha && r.concepto && r.monto > 0));
+    // Costos op raw — fechas normalizadas a ISO.
+    // Los sueldos SEMANALES se arman desde el rooster (fuente de verdad), así que se
+    // excluyen de CostosOp para no duplicar. Se mantienen sueldos mensuales (histórico)
+    // y el resto de gastos (luz, etc.). Los sueldos semanales legacy de CostosOp se ignoran.
+    const copBase = dedupSueldos(parseCSV(tCostosOp).map(r => ({
+      ...r, fecha: parseFecha(r.fecha), monto: parseNum(r.monto) || 0
+    })).filter(r => r.fecha && r.concepto && r.monto > 0))
+      .filter(r => !((r.concepto || "").toLowerCase() === "sueldos" &&
+                     (r.frecuencia || "").toLowerCase() === "semanal"));
+
+    // Sueldos semanales desde el rooster (hoja Pagos): un registro por (semana, empleada),
+    // priorizando "pagado" (real) sobre "pendiente" (estimado). Cada uno impacta su semana
+    // Mon-Dom vía fecha = domingo de esa semana.
+    let pagosRooster = [];
+    if (rRooster) { try { pagosRooster = (await rRooster.json()).pagos || []; } catch(e) {} }
+    const sueldosRooster = construirSueldosRooster(pagosRooster);
+    costosOpRaw = copBase.concat(sueldosRooster);
 
     // Construir costosOp desde raw (suma de montos por fecha)
     // Esto hace que Rentabilidad y Márgenes estén siempre en sync con el sheet raw
@@ -749,6 +766,20 @@ function diasEnMes(mesStr) {
   if (!mesStr) return 30;
   const [yr, mo] = mesStr.split("-").map(Number);
   return new Date(yr, mo, 0).getDate();
+}
+
+// Lunes de la semana (Mon-Dom) que contiene una fecha "YYYY-MM-DD"
+function mondayOfWeek(fechaStr) {
+  const d = new Date(String(fechaStr).slice(0,10) + "T12:00:00");
+  const dow = d.getDay() || 7; // 1=lun … 7=dom
+  d.setDate(d.getDate() - dow + 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+// Domingo (fin) de la semana cuyo lunes es "YYYY-MM-DD"
+function finDeSemana(lunesStr) {
+  const d = new Date(String(lunesStr).slice(0,10) + "T12:00:00");
+  d.setDate(d.getDate() + 6);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
 // Semana ISO de una fecha "YYYY-MM-DD" → "YYYY-WNN"
@@ -1604,6 +1635,39 @@ function refreshDash() {
     btn.textContent = "↺ Actualizar";
     btn.disabled = false;
   });
+}
+
+// ── Sueldos semanales desde el rooster (hoja Pagos) ────────────────────────────
+// La hoja Pagos tiene: semana_inicio, empleada, monto, estado ("pendiente"|"pagado").
+// Se queda un registro por (semana ISO, empleada): "pagado" (real) pisa "pendiente"
+// (estimado); a igual estado, gana el último de la hoja. El monto impacta la semana
+// Mon-Dom usando fecha = domingo de esa semana. Así el costo op de la semana corriente
+// ya incluye los pendientes hasta que se paguen y queden fijos.
+function construirSueldosRooster(pagos) {
+  const best = {};
+  const rank = e => e === "pagado" ? 2 : (e === "pendiente" ? 1 : 0);
+  (pagos || []).forEach(p => {
+    const emp   = String(p.empleada || "").trim();
+    const ini   = String(p.semana_inicio || "").slice(0, 10);
+    const monto = parseNum(p.monto);
+    if (!emp || !ini || !(monto > 0)) return;
+    const lunes = mondayOfWeek(ini);
+    const key   = lunes + "|" + emp;
+    const est   = String(p.estado || "").toLowerCase();
+    const cur   = best[key];
+    if (!cur || rank(est) >= rank(cur.estado))
+      best[key] = { lunes, empleada: emp, monto, estado: est };
+  });
+  return Object.values(best).map(b => ({
+    fecha:      finDeSemana(b.lunes),
+    concepto:   "sueldos",
+    frecuencia: "semanal",
+    monto:      b.monto,
+    comentario: `${b.empleada} — semana ${b.lunes} (${b.estado})`,
+    empleada:   b.empleada,
+    semana_inicio: b.lunes,
+    estado:     b.estado,
+  }));
 }
 
 // ── Dedup de sueldos (rooster) ─────────────────────────────────────────────────
