@@ -4,30 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Aronda — Dashboard</title>
+<link rel="icon" type="image/png" href="aronda-badge.png">
+<link rel="apple-touch-icon" href="aronda-badge.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --cafe:   #2c1a0e;
-  --verde:  #1a3a2c;
-  --gold:   #c47a00;
-  --bg:     #f5f0eb;
-  --card:   #ffffff;
-  --text:   #222222;
-  --muted:  #888888;
-  --border: #e0d6cc;
+  --cafe:    #316046;   /* verde marca Aronda */
+  --verde:   #316046;
+  --naranja: #DD704A;   /* naranja marca Aronda */
+  --gold:    #c47a00;
+  --bg:      #f5f0eb;
+  --card:    #ffffff;
+  --text:    #233a30;
+  --muted:   #8a9690;
+  --border:  #e0d6cc;
 }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
        background: var(--bg); color: var(--text); padding-bottom: 60px; }
 
 /* HEADER */
 header {
-  background: var(--cafe); color: #f5e6d3;
-  padding: 14px 20px; display: flex; align-items: center;
+  background: var(--card); color: var(--text);
+  border-bottom: 3px solid var(--verde);
+  padding: 10px 20px; display: flex; align-items: center;
   justify-content: space-between; position: sticky; top: 0; z-index: 20;
 }
-header h1 { font-size: 1rem; letter-spacing: 1px; }
-#last-update { font-size: 0.68rem; opacity: 0.6; }
+header .logo { height: 36px; display: block; }
+#last-update { font-size: 0.68rem; color: var(--muted); }
 
 /* FILTROS */
 .filters {
@@ -139,12 +143,12 @@ input[type=month], input[type=date], input[type=week] {
 </div>
 
 <header>
-  <h1>☕ ARONDA — Dashboard</h1>
+  <img src="aronda-logo.png" alt="Aronda — café de calle" class="logo">
   <div style="display:flex;align-items:center;gap:10px">
     <span id="last-update"></span>
     <button onclick="refreshDash()" title="Actualizar datos"
-      style="background:rgba(255,255,255,0.15);border:none;border-radius:8px;color:#f5e6d3;
-             font-size:0.8rem;padding:5px 10px;cursor:pointer;white-space:nowrap"
+      style="background:var(--verde);border:none;border-radius:8px;color:#fff;
+             font-size:0.8rem;padding:6px 12px;cursor:pointer;white-space:nowrap"
       id="btn-refresh">↺ Actualizar</button>
   </div>
 </header>
@@ -627,7 +631,7 @@ async function loadData() {
       `<div style="text-align:center;padding:40px;color:#c0392b">
         ❌ Error al cargar datos<br>
         <small style="color:#888">${err.message}</small><br><br>
-        <button onclick="loadData()" style="padding:10px 20px;background:#2c1a0e;color:#fff;
+        <button onclick="loadData()" style="padding:10px 20px;background:#316046;color:#fff;
           border:none;border-radius:8px;cursor:pointer;font-size:0.9rem">Reintentar</button>
       </div>`;
   }
@@ -895,13 +899,13 @@ function renderVentas(data) {
   // Chart por producto
   const prodData = Object.entries(byProd).sort((a,b)=>b[1]-a[1]).slice(0,10);
   drawBar("chart-ventas-prod", prodData.map(p=>p[0]), prodData.map(p=>p[1]),
-          "Unidades", "#2c1a0e");
+          "Unidades", "#316046");
 
   // Evolución por mes — sin filtro de período pero con turno/producto/grupo
   const byMesEvol = {};
   getFilteredDataSinPeriodo().forEach(d => { const m=d.fecha.slice(0,7); byMesEvol[m]=(byMesEvol[m]||0)+d.cantidad; });
   const mesesEvol = Object.keys(byMesEvol).sort();
-  drawLine("chart-ventas-evol", mesesEvol, mesesEvol.map(m=>byMesEvol[m]), "Unidades", "#2c1a0e");
+  drawLine("chart-ventas-evol", mesesEvol, mesesEvol.map(m=>byMesEvol[m]), "Unidades", "#316046");
 
   renderPromedioDiario(data);
   renderBEProgress();
@@ -1095,7 +1099,7 @@ function renderBERow(id, sold, target, costoTarget, label) {
   if (!el) return;
   const pct    = target > 0 ? Math.min(sold / target, 1) : 0;
   const faltan = Math.max(target - sold, 0);
-  const color  = pct >= 1 ? "#1a3a2c" : pct >= 0.6 ? "#c47a00" : "#c0392b";
+  const color  = pct >= 1 ? "#316046" : pct >= 0.6 ? "#c47a00" : "#c0392b";
   const status = pct >= 1 ? "✅ ¡Cubierto!" : `faltan <b>${faltan}</b> uds`;
   el.innerHTML =
     '<div style="margin-bottom:12px">' +
@@ -1139,7 +1143,7 @@ function renderFacturacion(data) {
   drawBar("chart-fact-prod",
     sortedProds.slice(0,10).map(p=>p[0]),
     sortedProds.slice(0,10).map(p=>p[1].rev),
-    "Facturación $", "#1a3a2c");
+    "Facturación $", "#316046");
 
   // Tabla
   const tbody = document.getElementById("tabla-fact");
@@ -1184,7 +1188,7 @@ function renderRentabilidad(data, costoOp) {
   drawDonut("chart-rent-stack",
     ["Costo variable", "Costo operativo", "Rentabilidad"],
     [Math.max(costoVar,0), Math.max(costoOp,0), Math.max(rentaNeta,0)],
-    ["#c0392b","#e67e22","#1a3a2c"]);
+    ["#c0392b","#DD704A","#316046"]);
 
   // Evolución mensual — sin filtro de período pero con turno/producto/grupo
   const byMesTodo = {};
@@ -1203,7 +1207,7 @@ function renderRentabilidad(data, costoOp) {
     const v = byMesTodo[m];
     return v.revenue - v.costo_var - v.costo_op;
   });
-  drawLine("chart-rent-evol", meses, rentMes, "Rentabilidad $", "#1a3a2c");
+  drawLine("chart-rent-evol", meses, rentMes, "Rentabilidad $", "#316046");
 }
 
 // ── MARGEN ────────────────────────────────────────────────────────────────────
@@ -1287,7 +1291,7 @@ function renderMargen(data, drawCharts = true) {
 
   if (drawCharts) {
     // Chart margen %
-    const colors = prodMargen.map(p => p.pct >= 0.5 ? "#1a3a2c" : p.pct >= 0.3 ? "#c47a00" : "#c0392b");
+    const colors = prodMargen.map(p => p.pct >= 0.5 ? "#316046" : p.pct >= 0.3 ? "#c47a00" : "#c0392b");
     drawBarH("chart-margen-prod",
       prodMargen.map(p => p.nombre),
       prodMargen.map(p => Math.round(p.pct * 100)),
@@ -1295,7 +1299,7 @@ function renderMargen(data, drawCharts = true) {
 
     // Chart markup por producto
     const markupSorted = [...prodMargen].sort((a,b) => b.markup - a.markup);
-    const markupColors = markupSorted.map(p => p.markup >= 1.5 ? "#1a3a2c" : p.markup >= 1 ? "#c47a00" : "#c0392b");
+    const markupColors = markupSorted.map(p => p.markup >= 1.5 ? "#316046" : p.markup >= 1 ? "#c47a00" : "#c0392b");
     drawBarH("chart-markup-prod",
       markupSorted.map(p => p.nombre),
       markupSorted.map(p => Math.round(p.markup * 100)),
@@ -1346,7 +1350,7 @@ function renderTablaMargen() {
   });
 
   document.getElementById("tabla-margen").innerHTML = data.map(p => {
-    const clr = p.pct >= 0.5 ? "#1a3a2c" : p.pct >= 0.3 ? "#c47a00" : "#c0392b";
+    const clr = p.pct >= 0.5 ? "#316046" : p.pct >= 0.3 ? "#c47a00" : "#c0392b";
     return `<tr>
       <td>${p.nombre}</td>
       <td class="td-right">${fmt$(p.precio)}</td>
@@ -1431,7 +1435,7 @@ function renderCostosOp() {
     data:{
       labels: meses,
       datasets:[
-        {label:"Facturación", data:meses.map(m=>factMes[m]||0), backgroundColor:"#1a3a2ccc", borderRadius:3},
+        {label:"Facturación", data:meses.map(m=>factMes[m]||0), backgroundColor:"#316046cc", borderRadius:3},
         {label:"Costo op",    data:meses.map(m=>Math.round(byMes[m]||0)), backgroundColor:"#c0392bcc", borderRadius:3}
       ]
     },
@@ -1445,7 +1449,7 @@ function renderCostosOp() {
     drawDonut("chart-co-concepto",
       conceptos.map(c=>c[0]),
       conceptos.map(c=>c[1]),
-      ["#c0392b","#e67e22","#f39c12","#1a3a2c","#2c1a0e"]);
+      ["#DD704A","#c47a00","#5a8f6e","#316046","#1f3d2c"]);
   }
 }
 
@@ -1593,7 +1597,7 @@ function renderDetalle() {
   tbody.innerHTML = rows.map(r => {
     const isNew = r.nombre !== lastNombre;
     lastNombre = r.nombre;
-    const mcColor = r.margenPct >= 0.5 ? "#1a3a2c" : r.margenPct >= 0.3 ? "#c47a00" : "#c0392b";
+    const mcColor = r.margenPct >= 0.5 ? "#316046" : r.margenPct >= 0.3 ? "#c47a00" : "#c0392b";
     return `<tr style="${isNew && rows.indexOf(r) > 0 ? 'border-top:2px solid #e0d6cc' : ''}">
       <td style="font-weight:${isNew?'700':'400'};color:${isNew?'var(--cafe)':'#555'}">${isNew ? r.nombre : ''}</td>
       <td style="color:#888;font-size:0.75rem">${isNew ? r.grupo : ''}</td>
@@ -1604,7 +1608,7 @@ function renderDetalle() {
       <td class="td-right" style="font-weight:700">${fmt$(r.margen)}</td>
       <td class="td-right" style="font-weight:700;color:${mcColor}">${fmtPct(r.margenPct)}</td>
       <td class="td-right">${fmt$(r.margen)}</td>
-      <td class="td-right" style="font-weight:700;color:${r.markup>=1.5?'#1a3a2c':r.markup>=1?'#c47a00':'#c0392b'}">${fmtPct(r.markup)}</td>
+      <td class="td-right" style="font-weight:700;color:${r.markup>=1.5?'#316046':r.markup>=1?'#c47a00':'#c0392b'}">${fmtPct(r.markup)}</td>
       <td class="td-right" style="color:#888">${fmt$(Math.round(r.avgCoOp))}</td>
       <td class="td-right" style="color:#555">${r.breakEven !== null ? r.breakEven + ' u/día' : '—'}</td>
     </tr>`;
