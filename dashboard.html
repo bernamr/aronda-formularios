@@ -974,6 +974,8 @@ function renderBEProgress() {
   const hoy    = _t.getFullYear() + "-" + String(_t.getMonth()+1).padStart(2,"0") + "-" + String(_t.getDate()).padStart(2,"0");
   const hoyMes = hoy.slice(0,7);
   const hoyWeek = fechaToWeekStr(hoy);
+  // Día a evaluar en el break-even diario: el del picker (si hay) o hoy real.
+  const diaBuscado = pickerDia || hoy;
 
   // ── 4. Separar costos por frecuencia ──────────────────────────────────
   const frec = r => (r.frecuencia || "mensual").toLowerCase();
@@ -1016,9 +1018,9 @@ function renderBEProgress() {
     estimadoSem = true;
   }
 
-  // ── 7. Costos puntuales del día de hoy ────────────────────────────────
+  // ── 7. Costos puntuales del día evaluado ──────────────────────────────
   const costoHoyPuntual = costosDiarios
-    .filter(r => r.fecha === hoy)
+    .filter(r => r.fecha === diaBuscado)
     .reduce((s,r) => s + r.monto, 0);
 
   // Sin datos de ningún tipo → salir
@@ -1049,7 +1051,7 @@ function renderBEProgress() {
     .filter(d => fechaToWeekStr(d.fecha) === (pickerSemana || hoyWeek))
     .reduce((s,d) => s + d.cantidad, 0);
   const soldHoy = beBase
-    .filter(d => d.fecha === hoy)
+    .filter(d => d.fecha === diaBuscado)
     .reduce((s,d) => s + d.cantidad, 0);
 
   // ── 11. Etiquetas ──────────────────────────────────────────────────────
@@ -1057,6 +1059,9 @@ function renderBEProgress() {
   const est = estimado ? " *" : "";
   const mesLabel = (pickerMes || hoyMes).replace("-", "/") + est;
   const semLabel = "Sem. " + (pickerSemana || hoyWeek).split("-W")[1] + est;
+  const diaLabel = diaBuscado === hoy
+    ? "Hoy"
+    : diaBuscado.slice(8,10) + "/" + diaBuscado.slice(5,7);
 
   const refLabel = filters.productos.length > 0
     ? filters.productos.slice(0,2).join(", ") + (filters.productos.length > 2 ? " …" : "")
@@ -1077,11 +1082,11 @@ function renderBEProgress() {
   } else if (period === "semana") {
     renderBERow("be-semana", soldSem, beSem, costoSem, "Semana " + semLabel);
   } else if (period === "dia") {
-    renderBERow("be-dia", soldHoy, beHoy, costoHoy, "Hoy");
+    renderBERow("be-dia", soldHoy, beHoy, costoHoy, diaLabel);
   } else { // total
     renderBERow("be-mes",    soldMes, beMes, costoMes, "Mes " + mesLabel);
     renderBERow("be-semana", soldSem, beSem, costoSem, "Semana " + semLabel);
-    renderBERow("be-dia",    soldHoy, beHoy, costoHoy, "Hoy");
+    renderBERow("be-dia",    soldHoy, beHoy, costoHoy, diaLabel);
   }
 }
 
