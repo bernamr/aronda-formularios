@@ -88,7 +88,10 @@ input[type=date] { padding:5px 10px; border:1.5px solid var(--border); border-ra
   <div id="content" style="display:none">
     <div class="card" id="lista"></div>
 
-    <div class="sec-title">Pedidos recientes</div>
+    <div class="sec-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Pedidos recientes</span>
+      <button onclick="borrarHistorial()" style="background:none;border:none;color:var(--rojo);font-size:.68rem;font-weight:700;cursor:pointer;text-transform:none">🗑️ Borrar historial</button>
+    </div>
     <div class="card" id="recientes"></div>
   </div>
 </div>
@@ -280,10 +283,21 @@ function renderRecientes() {
     if (!g[k]) g[k] = { fecha: String(p.fecha).slice(0,10), proveedor: p.proveedor, total: 0 };
     g[k].total += Number(p.total) || 0;
   });
-  const arr = Object.values(g).sort((a,b) => a.fecha < b.fecha ? 1 : -1).slice(0, 12);
+  const arr = Object.values(g).sort((a,b) => a.fecha < b.fecha ? 1 : -1).slice(0, 3);
   document.getElementById("recientes").innerHTML = arr.length
     ? arr.map(p => `<div class="ped"><div><b>${p.proveedor}</b><div class="pv">${p.fecha}</div></div><div class="total-line">${fmt(p.total)}</div></div>`).join("")
     : `<div class="ped"><span class="pv">Todavía no hay pedidos</span></div>`;
+}
+
+async function borrarHistorial() {
+  if (!confirm("¿Borrar todo el historial de pedidos? Esto no se puede deshacer.")) return;
+  try {
+    await fetch(APPS_SCRIPT_URL, { method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ action:"clear_pedidos" }) });
+    pedidos = [];
+    renderRecientes();
+    toast("✅ Historial borrado");
+  } catch(e) { toast("❌ No se pudo borrar", true); }
 }
 
 function toast(msg, err=false) {
