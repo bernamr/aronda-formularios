@@ -362,7 +362,7 @@ function renderForm() {
         <span class="product-name">${p.nombre}</span>
         <div class="qty-control">
           <button class="qty-btn minus" onclick="change('${p.id}', -1)">−</button>
-          <input class="qty-input" id="qty-${p.id}" type="number" min="0" inputmode="numeric" value="0" oninput="setQty('${p.id}', this.value)">
+          <input class="qty-input" id="qty-${p.id}" type="number" min="0" inputmode="numeric" value="0" onfocus="this.select()" oninput="setQty('${p.id}', this.value)">
           <button class="qty-btn plus"  onclick="change('${p.id}', +1)">+</button>
         </div>`;
       list.appendChild(row);
