@@ -157,6 +157,33 @@
     color: #333;
   }
   .qty-display.nonzero { color: #316046; }
+  .qty-input {
+    width: 48px;
+    text-align: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #333;
+    border: 1.5px solid #ddd;
+    border-radius: 8px;
+    padding: 5px 2px;
+    background: #fafafa;
+    -moz-appearance: textfield;
+  }
+  .qty-input::-webkit-outer-spin-button,
+  .qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .qty-input:focus { outline: none; border-color: #316046; background: #fff; }
+  .qty-input.nonzero { color: #316046; border-color: #316046; }
+  .empleada-input {
+    flex: 1;
+    min-width: 120px;
+    padding: 10px 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: #fafafa;
+    font-size: 0.95rem;
+    color: #333;
+  }
+  .empleada-input:focus { outline: none; border-color: #316046; background: #fff; }
 
   .submit-area {
     padding: 24px 20px 8px;
@@ -251,9 +278,10 @@
 <div class="empleada-selector">
   <div style="width:100%">
     <label>¿Quién registra?</label>
-    <div style="display:flex;gap:10px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
       <button class="empleada-btn" id="btn-nadia" onclick="setEmpleada('Nadia')">👩 Nadia</button>
       <button class="empleada-btn" id="btn-lara"  onclick="setEmpleada('Lara')">👩 Lara</button>
+      <input class="empleada-input" id="empleada-otra" type="text" placeholder="Otra persona…" oninput="setEmpleadaLibre(this.value)">
     </div>
   </div>
 </div>
@@ -334,7 +362,7 @@ function renderForm() {
         <span class="product-name">${p.nombre}</span>
         <div class="qty-control">
           <button class="qty-btn minus" onclick="change('${p.id}', -1)">−</button>
-          <span class="qty-display" id="qty-${p.id}">0</span>
+          <input class="qty-input" id="qty-${p.id}" type="number" min="0" inputmode="numeric" value="0" oninput="setQty('${p.id}', this.value)">
           <button class="qty-btn plus"  onclick="change('${p.id}', +1)">+</button>
         </div>`;
       list.appendChild(row);
@@ -345,16 +373,36 @@ function renderForm() {
 }
 
 function change(id, delta) {
-  qty[id] = Math.max(0, qty[id] + delta);
+  qty[id] = Math.max(0, (qty[id] || 0) + delta);
   const el = document.getElementById("qty-" + id);
-  el.textContent = qty[id];
-  el.className = "qty-display" + (qty[id] > 0 ? " nonzero" : "");
+  el.value = qty[id];
+  el.className = "qty-input" + (qty[id] > 0 ? " nonzero" : "");
+}
+
+// Escritura directa de la cantidad
+function setQty(id, val) {
+  let n = parseInt(val, 10);
+  if (isNaN(n) || n < 0) n = 0;
+  qty[id] = n;
+  const el = document.getElementById("qty-" + id);
+  el.className = "qty-input" + (n > 0 ? " nonzero" : "");
 }
 
 function setEmpleada(nombre) {
   empleada = nombre;
   document.getElementById("btn-nadia").className = "empleada-btn" + (nombre === "Nadia" ? " active" : "");
   document.getElementById("btn-lara").className  = "empleada-btn" + (nombre === "Lara"  ? " active" : "");
+  document.getElementById("empleada-otra").value = ""; // limpiar campo libre al elegir botón
+}
+
+// Campo libre: cualquier otra persona
+function setEmpleadaLibre(val) {
+  const v = (val || "").trim();
+  empleada = v || null;
+  if (v) {
+    document.getElementById("btn-nadia").className = "empleada-btn";
+    document.getElementById("btn-lara").className  = "empleada-btn";
+  }
 }
 
 function setTurno(t) {
