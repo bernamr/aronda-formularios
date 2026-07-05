@@ -140,8 +140,9 @@ const diasSel = new Set();   // offsets 0..6 elegidos
 const qty = {};              // clave `${off}::${concepto}` -> cantidad
 const fmt = n => "$" + Math.round(n).toLocaleString("es-AR");
 // offset de semana (respecto a la semana actual) de una fecha ISO, y día 0..6
-function weekOffsetOf(isoStr){ const t=new Date(isoStr+"T12:00:00"); const dow=t.getDay()||7; const mon=new Date(t); mon.setDate(t.getDate()-dow+1); return Math.round((mon - lunesDe(0))/(7*86400000)); }
-function offOf(isoStr){ const d=new Date(isoStr+"T12:00:00"); return (d.getDay()||7)-1; }
+function toDate(s){ return new Date(String(s).slice(0,10)+"T12:00:00"); } // ignora hora/tz del Sheet
+function weekOffsetOf(isoStr){ const t=toDate(isoStr); const dow=t.getDay()||7; const mon=new Date(t); mon.setDate(t.getDate()-dow+1); return Math.round((mon - lunesDe(0))/(7*86400000)); }
+function offOf(isoStr){ const d=toDate(isoStr); return (d.getDay()||7)-1; }
 
 // ── Fechas ──────────────────────────────────────────────────────────────────
 function lunesDe(offSemana) { const d = new Date(); const dow = d.getDay() || 7; d.setHours(12,0,0,0); d.setDate(d.getDate() - dow + 1 + offSemana*7); return d; }
@@ -297,7 +298,9 @@ async function guardar() {
   const items = lineas();
   if (!items.length) { toast("Cargá cantidades en al menos un día", true); return; }
   const editing = !!editandoId;
-  const fecha = editing ? (pedidos.find(p => (p.pedido_id||"")===editandoId)?.fecha_pedido || iso(new Date())) : iso(new Date());
+  const fecha = editing
+    ? String(pedidos.find(p => (p.pedido_id||"")===editandoId)?.fecha_pedido || iso(new Date())).slice(0,10)
+    : iso(new Date());
   const pid = editing ? editandoId : (fecha + "_" + proveedor + "_" + new Date().toTimeString().slice(0,8));
   const total = items.reduce((s,l)=>s+l.total, 0);
   const btn = document.getElementById("btn-save"); btn.disabled = true; btn.textContent = "Guardando…";
@@ -316,6 +319,21 @@ async function guardar() {
     if (editing) toast("✅ Pedido actualizado");
   } catch(e) { toast("❌ Error de conexión", true); }
   finally { btn.disabled = false; }
+}
+
+// ── Ver un pedido cerrado (solo lectura, muestra el comprobante) ────────────
+function verPedido(id) {
+  const rows = pedidos.filter(p => (p.pedido_id||"") === id);
+  if (!rows.length) return;
+  const items = rows.map(r => ({
+    off: offOf(r.fecha_entrega), dia: r.dia_entrega,
+    fecha_entrega: String(r.fecha_entrega).slice(0,10),
+    concepto: r.concepto, unidad: (r.unidad==="docena"?"docena":"unidad"),
+    docenas: Number(r.docenas)||0, cantidad: Number(r.cantidad)||0,
+    precio: Number(r.precio)||0, total: Number(r.total)||0
+  }));
+  const total = items.reduce((s,l)=>s+l.total, 0);
+  mostrarComprobante(String(rows[0].fecha_pedido||"").slice(0,10), rows[0].proveedor, items, total);
 }
 
 // ── Editar un pedido cerrado ────────────────────────────────────────────────
@@ -350,12 +368,12 @@ function cancelarEdicion() {
 function mostrarComprobante(fecha, prov, items, total) {
   const logo = document.querySelector("header img"); if (logo) document.getElementById("comp-logo").src = logo.src;
   document.getElementById("comp-prov").textContent = prov;
-  document.getElementById("comp-fecha").textContent = ddmm(new Date(fecha+"T12:00:00"));
+  document.getElementById("comp-fecha").textContent = ddmm(toDate(fecha));
   const porDia = {};
   items.forEach(l => { (porDia[l.off] = porDia[l.off] || []).push(l); });
   document.getElementById("comp-body").innerHTML = Object.keys(porDia).map(Number).sort((a,b)=>a-b).map(off => {
     const ls = porDia[off];
-    const head = `<div class="comp-day">${DIAS[off][0]} ${ddmm(fechaDe2(ls[0].fecha_entrega))}</div>`;
+    const head = `<div class="comp-day">${DIAS[off][0]} ${ddmm(toDate(ls[0].fecha_entrega))}</div>`;
     const lines = ls.map(l => `<div class="comp-line"><span class="cl-n">${l.cantidad}${l.unidad==="docena"?` (${l.docenas}doc)`:""} · ${l.concepto} <span style="color:#8a9690">· ${fmt(l.precio)}/u</span></span><span class="cl-t">${fmt(l.total)}</span></div>`).join("");
     return head + lines;
   }).join("");
@@ -396,8 +414,9 @@ function renderRecientes() {
   document.getElementById("recientes").innerHTML = arr.length
     ? arr.map(p => `<div class="ped">
         <div><b>${p.proveedor}</b><div class="pv">${p.fecha}</div></div>
-        <div style="display:flex;align-items:center;gap:12px">
+        <div style="display:flex;align-items:center;gap:8px">
           <span class="ptot">${fmt(p.total)}</span>
+          <button onclick="verPedido('${String(p.id).replace(/'/g,"\\'")}')" style="background:none;border:1.5px solid var(--border);border-radius:14px;padding:4px 10px;font-size:.72rem;font-weight:700;color:var(--muted);cursor:pointer">👁 Ver</button>
           <button onclick="editarPedido('${String(p.id).replace(/'/g,"\\'")}')" style="background:none;border:1.5px solid var(--border);border-radius:14px;padding:4px 10px;font-size:.72rem;font-weight:700;color:var(--verde);cursor:pointer">✎ Editar</button>
         </div></div>`).join("")
     : `<div class="ped"><span class="pv">Todavía no hay pedidos</span></div>`;
