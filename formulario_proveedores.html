@@ -135,9 +135,13 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKKEjud38J_ri5
 const DIAS = [["Lunes","Lun",0],["Martes","Mar",1],["Miércoles","Mié",2],["Jueves","Jue",3],["Viernes","Vie",4],["Sábado","Sáb",5],["Domingo","Dom",6]];
 
 let catalogo = [], pedidos = [], proveedor = null, semanaOffset = 0;
+let editandoId = null, editInfo = "";   // edición de pedido cerrado
 const diasSel = new Set();   // offsets 0..6 elegidos
 const qty = {};              // clave `${off}::${concepto}` -> cantidad
 const fmt = n => "$" + Math.round(n).toLocaleString("es-AR");
+// offset de semana (respecto a la semana actual) de una fecha ISO, y día 0..6
+function weekOffsetOf(isoStr){ const t=new Date(isoStr+"T12:00:00"); const dow=t.getDay()||7; const mon=new Date(t); mon.setDate(t.getDate()-dow+1); return Math.round((mon - lunesDe(0))/(7*86400000)); }
+function offOf(isoStr){ const d=new Date(isoStr+"T12:00:00"); return (d.getDay()||7)-1; }
 
 // ── Fechas ──────────────────────────────────────────────────────────────────
 function lunesDe(offSemana) { const d = new Date(); const dow = d.getDay() || 7; d.setHours(12,0,0,0); d.setDate(d.getDate() - dow + 1 + offSemana*7); return d; }
@@ -189,10 +193,16 @@ function itemsProv() { return catalogo.filter(c => c.proveedor === proveedor); }
 // ── Render de días ──────────────────────────────────────────────────────────
 function render() {
   const cont = document.getElementById("dias-cards");
+  const banner = editandoId
+    ? `<div style="margin:10px 14px;padding:10px 14px;background:#fff3e0;border:1.5px solid var(--naranja);border-radius:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+         <span style="font-size:.82rem;font-weight:700;color:var(--naranja)">✎ Editando pedido — ${editInfo}</span>
+         <button onclick="cancelarEdicion()" style="background:none;border:none;color:var(--muted);font-size:.75rem;font-weight:700;cursor:pointer">Cancelar</button>
+       </div>` : "";
+  document.getElementById("btn-save").textContent = editandoId ? "Guardar cambios" : "Guardar pedido";
   const offs = [...diasSel].sort((a,b) => a-b);
-  if (!offs.length) { cont.innerHTML = `<div class="hint">Elegí los <b>días de entrega</b> arriba y cargá las cantidades de cada día.</div>`; recalc(); return; }
+  if (!offs.length) { cont.innerHTML = banner + `<div class="hint">Elegí los <b>días de entrega</b> arriba y cargá las cantidades de cada día.</div>`; recalc(); return; }
   const items = itemsProv();
-  cont.innerHTML = offs.map(off => {
+  cont.innerHTML = banner + offs.map(off => {
     const [nom,corto] = DIAS[off];
     const rows = items.map(it => {
       const u = (it.unidad||"") === "docena" ? "docena" : "unidad";
@@ -286,18 +296,54 @@ function cambiarPrecio(concepto, val) {
 async function guardar() {
   const items = lineas();
   if (!items.length) { toast("Cargá cantidades en al menos un día", true); return; }
-  const fecha = iso(new Date());
+  const editing = !!editandoId;
+  const fecha = editing ? (pedidos.find(p => (p.pedido_id||"")===editandoId)?.fecha_pedido || iso(new Date())) : iso(new Date());
+  const pid = editing ? editandoId : (fecha + "_" + proveedor + "_" + new Date().toTimeString().slice(0,8));
   const total = items.reduce((s,l)=>s+l.total, 0);
   const btn = document.getElementById("btn-save"); btn.disabled = true; btn.textContent = "Guardando…";
   try {
     await fetch(APPS_SCRIPT_URL, { method:"POST", mode:"no-cors", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action:"save_pedido", fecha, proveedor, items, total }) });
-    items.forEach(l => pedidos.push({ pedido_id: fecha+"_"+proveedor, fecha_pedido: fecha, proveedor, total: l.total }));
+      body: JSON.stringify({ action: editing ? "update_pedido" : "save_pedido", pedido_id: pid, fecha, proveedor, items, total }) });
+    // actualizar cache local: sacar líneas viejas de ese pedido y agregar las nuevas (con detalle completo)
+    pedidos = pedidos.filter(p => (p.pedido_id||"") !== pid);
+    items.forEach(l => pedidos.push({ pedido_id: pid, fecha_pedido: fecha, proveedor, dia_entrega: l.dia,
+      fecha_entrega: l.fecha_entrega, concepto: l.concepto, unidad: l.unidad, docenas: l.docenas,
+      cantidad: l.cantidad, precio: l.precio, total: l.total }));
     mostrarComprobante(fecha, proveedor, items, total);
+    editandoId = null; editInfo = "";
     diasSel.clear(); for (const k in qty) delete qty[k];
     renderDiaBtns(); render(); renderRecientes();
+    if (editing) toast("✅ Pedido actualizado");
   } catch(e) { toast("❌ Error de conexión", true); }
-  finally { btn.disabled = false; btn.textContent = "Guardar pedido"; }
+  finally { btn.disabled = false; }
+}
+
+// ── Editar un pedido cerrado ────────────────────────────────────────────────
+function editarPedido(id) {
+  const rows = pedidos.filter(p => (p.pedido_id||"") === id);
+  if (!rows.length) return;
+  proveedor = rows[0].proveedor;
+  document.querySelectorAll("#prov-btns .pbtn").forEach(b => b.classList.toggle("active", b.dataset.p === proveedor));
+  // semana y días desde las fechas de entrega
+  semanaOffset = weekOffsetOf(rows[0].fecha_entrega);
+  document.getElementById("sem-0").classList.toggle("active", semanaOffset===0);
+  document.getElementById("sem-1").classList.toggle("active", semanaOffset===1);
+  diasSel.clear(); for (const k in qty) delete qty[k];
+  rows.forEach(r => {
+    const off = offOf(r.fecha_entrega); diasSel.add(off);
+    const u = (r.unidad||"")==="docena" ? "docena" : "unidad";
+    qty[off + "::" + r.concepto] = u==="docena" ? (Number(r.docenas)||0) : (Number(r.cantidad)||0);
+  });
+  editandoId = id;
+  editInfo = `${proveedor} · ${String(rows[0].fecha_pedido||"").slice(0,10)}`;
+  renderDiaBtns(); render(); renderPrecios();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  toast("Editá y guardá los cambios");
+}
+function cancelarEdicion() {
+  editandoId = null; editInfo = "";
+  diasSel.clear(); for (const k in qty) delete qty[k];
+  renderDiaBtns(); render();
 }
 
 // ── Comprobante (agrupado por día) ──────────────────────────────────────────
@@ -310,7 +356,7 @@ function mostrarComprobante(fecha, prov, items, total) {
   document.getElementById("comp-body").innerHTML = Object.keys(porDia).map(Number).sort((a,b)=>a-b).map(off => {
     const ls = porDia[off];
     const head = `<div class="comp-day">${DIAS[off][0]} ${ddmm(fechaDe2(ls[0].fecha_entrega))}</div>`;
-    const lines = ls.map(l => `<div class="comp-line"><span class="cl-n">${l.cantidad}${l.unidad==="docena"?` (${l.docenas}doc)`:""} · ${l.concepto}</span><span class="cl-t">${fmt(l.total)}</span></div>`).join("");
+    const lines = ls.map(l => `<div class="comp-line"><span class="cl-n">${l.cantidad}${l.unidad==="docena"?` (${l.docenas}doc)`:""} · ${l.concepto} <span style="color:#8a9690">· ${fmt(l.precio)}/u</span></span><span class="cl-t">${fmt(l.total)}</span></div>`).join("");
     return head + lines;
   }).join("");
   document.getElementById("comp-total").textContent = fmt(total);
@@ -343,12 +389,17 @@ function renderRecientes() {
   const g = {};
   pedidos.forEach(p => {
     const k = p.pedido_id || ((p.fecha_pedido||p.fecha||"")+"_"+p.proveedor);
-    if (!g[k]) g[k] = { fecha: String(p.fecha_pedido||p.fecha||"").slice(0,10), proveedor: p.proveedor, total: 0 };
+    if (!g[k]) g[k] = { id: k, fecha: String(p.fecha_pedido||p.fecha||"").slice(0,10), proveedor: p.proveedor, total: 0 };
     g[k].total += Number(p.total) || 0;
   });
   const arr = Object.values(g).sort((a,b) => a.fecha < b.fecha ? 1 : -1).slice(0, 3);
   document.getElementById("recientes").innerHTML = arr.length
-    ? arr.map(p => `<div class="ped"><div><b>${p.proveedor}</b><div class="pv">${p.fecha}</div></div><div class="ptot">${fmt(p.total)}</div></div>`).join("")
+    ? arr.map(p => `<div class="ped">
+        <div><b>${p.proveedor}</b><div class="pv">${p.fecha}</div></div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="ptot">${fmt(p.total)}</span>
+          <button onclick="editarPedido('${String(p.id).replace(/'/g,"\\'")}')" style="background:none;border:1.5px solid var(--border);border-radius:14px;padding:4px 10px;font-size:.72rem;font-weight:700;color:var(--verde);cursor:pointer">✎ Editar</button>
+        </div></div>`).join("")
     : `<div class="ped"><span class="pv">Todavía no hay pedidos</span></div>`;
 }
 async function borrarHistorial() {
