@@ -70,9 +70,11 @@ header .s { font-size:.66rem; color:var(--muted); }
 .comp-line .cl-n { color:var(--text); } .comp-line .cl-t { font-weight:600; }
 .comp-total { display:flex; justify-content:space-between; align-items:center; padding:14px 18px; background:#eef4f0; margin-top:6px; }
 .comp-total span { font-size:.72rem; font-weight:700; text-transform:uppercase; color:var(--muted); } .comp-total b { font-size:1.4rem; color:var(--verde); }
-.comp-actions { display:flex; gap:10px; max-width:420px; width:100%; margin-top:12px; }
-.comp-actions button { flex:1; padding:13px; border-radius:12px; border:none; font-size:.9rem; font-weight:700; cursor:pointer; }
-.btn-cerrar{ background:#e8e2da; color:#555; } .btn-captura{ background:var(--naranja); color:#fff; }
+.comp-actions { display:flex; flex-wrap:wrap; gap:8px; max-width:420px; width:100%; margin-top:12px; }
+.comp-actions button { flex:1; min-width:120px; padding:12px 8px; border-radius:12px; border:none; font-size:.82rem; font-weight:700; cursor:pointer; }
+.btn-cerrar{ background:#e8e2da; color:#555; flex:0 0 100%; } .btn-captura{ background:var(--naranja); color:#fff; }
+/* versión "solo cantidades": oculta precios y total */
+.comp.sin-precios .cl-p, .comp.sin-precios .cl-t, .comp.sin-precios .comp-total { display:none; }
 </style>
 </head>
 <body>
@@ -121,7 +123,8 @@ header .s { font-size:.66rem; color:var(--muted); }
   </div>
   <div class="comp-actions">
     <button class="btn-cerrar" onclick="cerrarComp()">Cerrar</button>
-    <button class="btn-captura" id="btn-captura" onclick="compartir()">📷 Compartir / Descargar</button>
+    <button class="btn-captura" onclick="compartir(true)">📷 Con precios</button>
+    <button class="btn-captura" onclick="compartir(false)">📷 Solo cantidades</button>
   </div>
 </div></div>
 
@@ -325,15 +328,16 @@ async function guardar() {
 function verPedido(id) {
   const rows = pedidos.filter(p => (p.pedido_id||"") === id);
   if (!rows.length) return;
-  const items = rows.map(r => ({
-    off: offOf(r.fecha_entrega), dia: r.dia_entrega,
-    fecha_entrega: String(r.fecha_entrega).slice(0,10),
-    concepto: r.concepto, unidad: (r.unidad==="docena"?"docena":"unidad"),
-    docenas: Number(r.docenas)||0, cantidad: Number(r.cantidad)||0,
-    precio: Number(r.precio)||0, total: Number(r.total)||0
-  }));
+  const items = rows.map(r => {
+    const fe = String(r.fecha_entrega || r.fecha_pedido || r.fecha || "").slice(0,10);
+    const off = offOf(fe);
+    return { off, dia: r.dia_entrega || (isNaN(off)?"":DIAS[off][0]),
+      fecha_entrega: fe, concepto: r.concepto, unidad: (r.unidad==="docena"?"docena":"unidad"),
+      docenas: Number(r.docenas)||0, cantidad: Number(r.cantidad)||0,
+      precio: Number(r.precio)||0, total: Number(r.total)||0 };
+  });
   const total = items.reduce((s,l)=>s+l.total, 0);
-  mostrarComprobante(String(rows[0].fecha_pedido||"").slice(0,10), rows[0].proveedor, items, total);
+  mostrarComprobante(String(rows[0].fecha_pedido||rows[0].fecha||"").slice(0,10), rows[0].proveedor, items, total);
 }
 
 // ── Editar un pedido cerrado ────────────────────────────────────────────────
@@ -342,18 +346,21 @@ function editarPedido(id) {
   if (!rows.length) return;
   proveedor = rows[0].proveedor;
   document.querySelectorAll("#prov-btns .pbtn").forEach(b => b.classList.toggle("active", b.dataset.p === proveedor));
-  // semana y días desde las fechas de entrega
-  semanaOffset = weekOffsetOf(rows[0].fecha_entrega);
+  // semana y días desde las fechas de entrega (con fallback a la fecha del pedido)
+  const feBase = String(rows[0].fecha_entrega || rows[0].fecha_pedido || rows[0].fecha || "").slice(0,10);
+  semanaOffset = weekOffsetOf(feBase);
   document.getElementById("sem-0").classList.toggle("active", semanaOffset===0);
   document.getElementById("sem-1").classList.toggle("active", semanaOffset===1);
   diasSel.clear(); for (const k in qty) delete qty[k];
   rows.forEach(r => {
-    const off = offOf(r.fecha_entrega); diasSel.add(off);
+    const fe = String(r.fecha_entrega || r.fecha_pedido || r.fecha || "").slice(0,10);
+    const off = offOf(fe); if (isNaN(off)) return;
+    diasSel.add(off);
     const u = (r.unidad||"")==="docena" ? "docena" : "unidad";
     qty[off + "::" + r.concepto] = u==="docena" ? (Number(r.docenas)||0) : (Number(r.cantidad)||0);
   });
   editandoId = id;
-  editInfo = `${proveedor} · ${String(rows[0].fecha_pedido||"").slice(0,10)}`;
+  editInfo = `${proveedor} · ${String(rows[0].fecha_pedido||rows[0].fecha||"").slice(0,10)}`;
   renderDiaBtns(); render(); renderPrecios();
   window.scrollTo({ top: 0, behavior: "smooth" });
   toast("Editá y guardá los cambios");
@@ -374,7 +381,7 @@ function mostrarComprobante(fecha, prov, items, total) {
   document.getElementById("comp-body").innerHTML = Object.keys(porDia).map(Number).sort((a,b)=>a-b).map(off => {
     const ls = porDia[off];
     const head = `<div class="comp-day">${DIAS[off][0]} ${ddmm(toDate(ls[0].fecha_entrega))}</div>`;
-    const lines = ls.map(l => `<div class="comp-line"><span class="cl-n">${l.cantidad}${l.unidad==="docena"?` (${l.docenas}doc)`:""} · ${l.concepto} <span style="color:#8a9690">· ${fmt(l.precio)}/u</span></span><span class="cl-t">${fmt(l.total)}</span></div>`).join("");
+    const lines = ls.map(l => `<div class="comp-line"><span class="cl-n">${l.cantidad}${l.unidad==="docena"?` (${l.docenas}doc)`:""} · ${l.concepto}<span class="cl-p"> · ${fmt(l.precio)}/u</span></span><span class="cl-t">${fmt(l.total)}</span></div>`).join("");
     return head + lines;
   }).join("");
   document.getElementById("comp-total").textContent = fmt(total);
@@ -383,11 +390,13 @@ function mostrarComprobante(fecha, prov, items, total) {
 function fechaDe2(isoStr){ return new Date(isoStr+"T12:00:00"); }
 function cerrarComp(){ document.getElementById("comp-ov").classList.remove("show"); }
 
-async function compartir() {
+async function compartir(conPrecios) {
   const target = document.getElementById("comprobante");
   const prov = document.getElementById("comp-prov").textContent;
-  const nombre = `pedido-${prov}-${document.getElementById("comp-fecha").textContent.replace("/","-")}.png`;
-  const btn = document.getElementById("btn-captura"); btn.disabled = true;
+  const suf = conPrecios ? "" : "-cantidades";
+  const nombre = `pedido-${prov}-${document.getElementById("comp-fecha").textContent.replace("/","-")}${suf}.png`;
+  const btns = document.querySelectorAll(".btn-captura"); btns.forEach(b => b.disabled = true);
+  if (!conPrecios) target.classList.add("sin-precios");   // oculta precios y total
   try {
     const canvas = await html2canvas(target, { backgroundColor:"#ffffff", scale:2, useCORS:true });
     const dataUrl = canvas.toDataURL("image/png");
@@ -398,7 +407,7 @@ async function compartir() {
       });
     } else { descargar(dataUrl, nombre); }
   } catch(e) { toast("❌ No se pudo generar la imagen", true); }
-  finally { btn.disabled = false; }
+  finally { btns.forEach(b => b.disabled = false); target.classList.remove("sin-precios"); }
 }
 function descargar(dataUrl, nombre){ const a=document.createElement("a"); a.href=dataUrl; a.download=nombre; a.click(); toast("✅ Imagen lista"); }
 
