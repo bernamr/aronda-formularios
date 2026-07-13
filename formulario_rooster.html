@@ -316,12 +316,10 @@ async function init() {
       ...p, semana_inicio: String(p.semana_inicio).slice(0,10),
       _ts: p._ts || String(_tsCounter++) + "_" + p.empleada
     }));
-    const _seenP = new Set();
-    todosPagos = rawPagos.filter(p => {
-      const k = p.semana_inicio + "|" + p.empleada;
-      if (_seenP.has(k)) return false;
-      _seenP.add(k); return true;
-    });
+    // Dedup por semana+empleada quedándose con el ÚLTIMO (estado más reciente)
+    const _byKey = {};
+    rawPagos.forEach(p => { _byKey[p.semana_inicio + "|" + p.empleada] = p; });
+    todosPagos = Object.values(_byKey);
     // Cargar config del mes actual
     const ahora = new Date();
     const cfg = (data.config||[]).find(c => +c.año === ahora.getFullYear() && +c.mes === ahora.getMonth()+1)
@@ -332,17 +330,31 @@ async function init() {
   } catch(e) { loadConfigLocal(); }
 }
 
+// Convierte lo que devuelve el Sheet a "HH:MM": acepta "13:00" (texto) o fecha ISO
+// (1899-12-30T16:00:00Z) que Sheets guarda cuando la celda es de tipo hora.
+function toHHMM(v) {
+  if (!v && v !== 0) return "";
+  const s = String(v);
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (m) return m[1].padStart(2,"0") + ":" + m[2];   // ya es "HH:MM" (texto)
+  const d = new Date(s);
+  if (isNaN(d)) return "";
+  // fecha ISO (hora guardada como celda de tipo hora): UTC menos 3 (Argentina)
+  const h = (d.getUTCHours() - 3 + 24) % 24;
+  return String(h).padStart(2,"0") + ":" + String(d.getUTCMinutes()).padStart(2,"0");
+}
+
 function cargarConfig(cfg) {
   document.getElementById("cfg-anio").value    = cfg.año || 2026;
   document.getElementById("cfg-mes").value     = cfg.mes || 6;
-  document.getElementById("cfg-m-ini").value   = cfg.hora_inicio_manana  || "09:00";
-  document.getElementById("cfg-m-fin").value   = cfg.hora_fin_manana     || "14:00";
-  document.getElementById("cfg-t-ini").value   = cfg.hora_inicio_tarde   || "15:00";
-  document.getElementById("cfg-t-fin").value   = cfg.hora_fin_tarde      || "20:00";
-  document.getElementById("cfg-dm-ini").value  = cfg.hora_inicio_dom_m   || "09:00";
-  document.getElementById("cfg-dm-fin").value  = cfg.hora_fin_dom_m      || "14:00";
-  document.getElementById("cfg-dt-ini").value  = cfg.hora_inicio_dom_t   || "15:00";
-  document.getElementById("cfg-dt-fin").value  = cfg.hora_fin_dom_t      || "20:00";
+  document.getElementById("cfg-m-ini").value   = toHHMM(cfg.hora_inicio_manana)  || "09:00";
+  document.getElementById("cfg-m-fin").value   = toHHMM(cfg.hora_fin_manana)     || "14:00";
+  document.getElementById("cfg-t-ini").value   = toHHMM(cfg.hora_inicio_tarde)   || "15:00";
+  document.getElementById("cfg-t-fin").value   = toHHMM(cfg.hora_fin_tarde)      || "20:00";
+  document.getElementById("cfg-dm-ini").value  = toHHMM(cfg.hora_inicio_dom_m)   || "09:00";
+  document.getElementById("cfg-dm-fin").value  = toHHMM(cfg.hora_fin_dom_m)      || "14:00";
+  document.getElementById("cfg-dt-ini").value  = toHHMM(cfg.hora_inicio_dom_t)   || "15:00";
+  document.getElementById("cfg-dt-fin").value  = toHHMM(cfg.hora_fin_dom_t)      || "20:00";
   document.getElementById("cfg-precio").value  = cfg.precio_hora || 4200;
   document.getElementById("cfg-domingo").value = cfg.precio_domingo || 7000;
   config = cfg;
