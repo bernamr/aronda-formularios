@@ -87,6 +87,16 @@ td input.nadia   { background: #e3f2fd; }
 td input.extra   { background: #fff3e0; }
 td input.cerrado { background: #f5f5f5; color: #aaa; }
 td input.sinasignar { background: #fafafa; color: #bbb; }
+/* desplegable de empleada */
+td select.emp-select {
+  width: 100%; padding: 5px 4px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 0.8rem; background: #fafafa; margin: 0; text-align: center; cursor: pointer; -webkit-appearance: menulist;
+}
+td select.emp-select.lara    { background: #e8f5e9; }
+td select.emp-select.nadia   { background: #e3f2fd; }
+td select.emp-select.extra   { background: #fff3e0; }
+td select.emp-select.cerrado { background: #f5f5f5; color: #888; }
+td select.emp-select.sinasignar { background: #fafafa; color: #999; }
 
 .resumen-empleada {
   margin: 0 16px 8px; border-radius: 10px; padding: 12px 14px;
@@ -289,7 +299,7 @@ td input.sinasignar { background: #fafafa; color: #bbb; }
 <div class="toast" id="toast"></div>
 
 <script>
-const ROOSTER_URL   = "https://script.google.com/macros/s/AKfycbwOCDvZWTQUKmdPTsYnMXoC5Q4gGHGMOAcn5MCazLneVUH4Oe78bXSo4-Ga6VVpzG6-pA/exec";
+const ROOSTER_URL   = "https://script.google.com/macros/s/AKfycbxSx4r-L6KZDvLB4pf0RkhmT7Og4JAQ4uP6gWGENXAS2g4sBG1oXyoeT7vsDtt1mF4ntQ/exec";
 const COSTOS_OP_URL = "https://script.google.com/macros/s/AKfycbwIrepJkdflWPkSm58jt_rO32rHawyTwLa29ffCvNQ0wk1XNYijNp7qRPbdgqApzR2W/exec";
 
 const DIAS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
@@ -320,11 +330,12 @@ async function init() {
     const _byKey = {};
     rawPagos.forEach(p => { _byKey[p.semana_inicio + "|" + p.empleada] = p; });
     todosPagos = Object.values(_byKey);
-    // Cargar config del mes actual
-    const ahora = new Date();
-    const cfg = (data.config||[]).find(c => +c.año === ahora.getFullYear() && +c.mes === ahora.getMonth()+1)
-                || (data.config||[])[data.config.length-1] || {};
-    if (cfg.año) cargarConfig(cfg);
+    // Config: priorizar la ÚLTIMA usada (guardada en este dispositivo). Si no hay,
+    // tomar la última guardada en el server. Así deja de aparecer vacía/mal cada semana.
+    let cfg = null;
+    try { cfg = JSON.parse(localStorage.getItem("aronda_rooster_config") || "null"); } catch(e) {}
+    if (!cfg) cfg = (data.config||[])[(data.config||[]).length - 1] || null;
+    if (cfg) cargarConfig(cfg);
     renderRoster();
     renderPagos();
   } catch(e) { loadConfigLocal(); }
@@ -485,10 +496,28 @@ function getOpciones(emp) {
   return base;
 }
 
+// Crea un desplegable de empleada con las opciones dadas ("" = sin asignar / —)
+function crearSelectEmp(valor, opciones) {
+  const sel = document.createElement("select");
+  sel.className = "emp-select";
+  const ops = opciones.slice();
+  // si el valor guardado no está en la lista (ej. un nombre extra viejo), lo agrego
+  if (valor && !ops.includes(valor)) ops.push(valor);
+  ops.forEach(o => {
+    const op = document.createElement("option");
+    op.value = o;
+    op.textContent = o === "" ? "—" : o;
+    if (o === valor) op.selected = true;
+    sel.appendChild(op);
+  });
+  return sel;
+}
+
 function colorInput(inp) {
-  const v = inp.value.trim();
-  inp.className = v==="Lara"?"lara":v==="Nadia"?"nadia":v==="Cerrado"?"cerrado":
+  const v = String(inp.value).trim();
+  const estado = v==="Lara"?"lara":v==="Nadia"?"nadia":v==="Cerrado"?"cerrado":
     v===""||v==="Sin asignar"?"sinasignar":"extra";
+  inp.className = "emp-select " + estado;   // conserva la clase base para las queries
   calcularResumen();
 }
 
@@ -522,25 +551,20 @@ function renderRoster() {
       const fecha = fechaDia(lunes, i);
       const emp  = getEmpleadaTurno(fecha, turno, "1");
       const td = document.createElement("td");
-      // Datalist para sugerencias
-      const listId = `dl-${fecha}-${turno}`;
-      const dl = document.createElement("datalist");
-      dl.id = listId;
-      const sugerencias = ["Lara","Nadia","Cerrado","Sin asignar"];
+      // Opciones para el desplegable: fijas + las que ya trabajaron + extra de config
       const extra = extraNombre || document.getElementById("cfg-extra").value.trim();
-      if (extra && !sugerencias.includes(extra)) sugerencias.splice(2,0,extra);
-      sugerencias.forEach(s => { const op=document.createElement("option"); op.value=s; dl.appendChild(op); });
+      const conocidas = [...new Set(todosLosTurnos.map(t => t.empleada))]
+        .filter(e => e && e !== "Sin asignar" && e !== "Cerrado");
+      const opciones = ["", "Lara", "Nadia"];
+      conocidas.forEach(e => { if (!opciones.includes(e)) opciones.push(e); });
+      if (extra && !opciones.includes(extra)) opciones.push(extra);
+      opciones.push("Cerrado");
 
-      const inp = document.createElement("input");
-      inp.type = "text";
-      inp.setAttribute("list", listId);
-      inp.value = emp === "Sin asignar" ? "" : emp;
-      inp.placeholder = "—";
+      const inp = crearSelectEmp(emp === "Sin asignar" ? "" : emp, opciones);
       inp.dataset.fecha = fecha;
       inp.dataset.turno = turno;
       inp.dataset.dia = DIAS[i];
       inp.dataset.domingo = i===6 ? "1" : "0";
-      inp.addEventListener("input", () => colorInput(inp));
       inp.addEventListener("change", () => colorInput(inp));
       colorInput(inp);
 
@@ -556,18 +580,10 @@ function renderRoster() {
       ajuste.addEventListener("input", calcularResumen);
 
       // Empleada 2 (opcional)
-      const listId2 = `dl2-${fecha}-${turno}`;
-      const dl2 = document.createElement("datalist"); dl2.id = listId2;
-      sugerencias.forEach(s => { const op=document.createElement("option"); op.value=s; dl2.appendChild(op); });
-
-      const inp2 = document.createElement("input");
-      inp2.type = "text"; inp2.setAttribute("list", listId2);
-      inp2.value = tSaved2 ? (tSaved2.empleada==="Sin asignar" ? "" : tSaved2.empleada) : "";
-      inp2.placeholder = "+ otra";
-      inp2.style.cssText = "width:100%;padding:3px 6px;border:1px dashed #ddd;border-radius:6px;font-size:0.75rem;background:transparent;text-align:center;margin-top:3px";
+      const inp2 = crearSelectEmp(tSaved2 ? (tSaved2.empleada==="Sin asignar" ? "" : tSaved2.empleada) : "", opciones);
+      inp2.style.marginTop = "3px";
       inp2.dataset.fecha = fecha; inp2.dataset.turno = turno; inp2.dataset.dia = DIAS[i];
       inp2.dataset.domingo = i===6?"1":"0"; inp2.dataset.slot = "2";
-      inp2.addEventListener("input", () => colorInput(inp2));
       inp2.addEventListener("change", () => colorInput(inp2));
 
       const ajuste2 = document.createElement("input");
@@ -578,9 +594,9 @@ function renderRoster() {
       ajuste2.addEventListener("input", calcularResumen);
 
       inp.dataset.slot = "1";
-      td.appendChild(dl); td.appendChild(inp); td.appendChild(ajuste);
+      td.appendChild(inp); td.appendChild(ajuste);
       td.appendChild(document.createElement("hr")).style.cssText="border:none;border-top:1px dashed #eee;margin:3px 0";
-      td.appendChild(dl2); td.appendChild(inp2); td.appendChild(ajuste2);
+      td.appendChild(inp2); td.appendChild(ajuste2);
       tr.appendChild(td);
     }
     body.appendChild(tr);
@@ -600,7 +616,7 @@ function calcularResumen() {
 
   const stats = {};
 
-  document.querySelectorAll("#roster-body input[type=text]").forEach(inp => {
+  document.querySelectorAll("#roster-body .emp-select").forEach(inp => {
     const emp = inp.value.trim();
     if (!emp || emp === "Cerrado" || emp === "Sin asignar") return;
     if (!stats[emp]) stats[emp] = {hNorm:0, hDom:0};
@@ -638,7 +654,7 @@ function semanaSiguiente() { semanaOffset++; localStorage.setItem("aronda_rooste
 
 async function guardarRoster() {
   const turnos = [];
-  document.querySelectorAll("#roster-body input[type=text]").forEach(inp => {
+  document.querySelectorAll("#roster-body .emp-select").forEach(inp => {
     const slot = inp.dataset.slot || "1";
     // Encontrar el ajuste correspondiente a este slot
     const allAjustes = inp.parentElement.querySelectorAll("input.ajuste");
